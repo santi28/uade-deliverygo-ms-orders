@@ -282,10 +282,10 @@
       ]
     },
     {
-      "name": "CU-02 Agregar, modificar o eliminar items",
+      "name": "CU-02 Agregar, modificar o eliminar items (POST, PUT, DELETE)",
       "item": [
         {
-          "name": "CU-02 Alta de dos lineas",
+          "name": "CU-02 POST Alta de dos lineas",
           "request": {
             "method": "POST",
             "header": [
@@ -337,7 +337,7 @@
           ]
         },
         {
-          "name": "CU-02 Cambio de cantidad",
+          "name": "CU-02 POST Alternativa: producto que ya esta en el pedido",
           "request": {
             "method": "POST",
             "header": [
@@ -356,10 +356,54 @@
                 "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
               ]
             },
+            "description": "El alta no acumula cantidad: para eso esta el PUT.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 PUT Cambio de cantidad",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}"
+              ]
+            },
             "description": "La cantidad enviada reemplaza la que habia, no se suma: 5 pizzas y las 3 empanadas.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 5\n    }\n  ]\n}",
+              "raw": "{\n  \"cantidad\": 5\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -382,9 +426,9 @@
           ]
         },
         {
-          "name": "CU-02 Baja con cantidad 0",
+          "name": "CU-02 PUT Alternativa: producto que no esta en el pedido",
           "request": {
-            "method": "POST",
+            "method": "PUT",
             "header": [
               {
                 "key": "X-Cliente-Id",
@@ -396,21 +440,96 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoHelado}}",
               "host": [
-                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoHelado}}"
               ]
             },
-            "description": "Cantidad 0 quita la linea de empanadas; quedan las 5 pizzas.",
+            "description": "El cambio exige que la linea exista; el alta es el POST.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 0\n    }\n  ]\n}",
+              "raw": "{\n  \"cantidad\": 2\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 PUT Alternativa: cantidad cero",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}"
+              ]
+            },
+            "description": "Para quitar la linea esta el DELETE: DTO-05 exige cantidad mayor a cero.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cantidad\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 DELETE Baja de una linea",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoEmpanada}}",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoEmpanada}}"
+              ]
+            },
+            "description": "Saca las empanadas; quedan las 5 pizzas."
           },
           "event": [
             {
@@ -430,35 +549,22 @@
           ]
         },
         {
-          "name": "CU-02 Alternativa: baja de algo que no esta (idempotente)",
+          "name": "CU-02 DELETE Alternativa: baja repetida (idempotente)",
           "request": {
-            "method": "POST",
+            "method": "DELETE",
             "header": [
               {
                 "key": "X-Cliente-Id",
                 "value": "{{clienteId}}"
-              },
-              {
-                "key": "Content-Type",
-                "value": "application/json"
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoEmpanada}}",
               "host": [
-                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoEmpanada}}"
               ]
             },
-            "description": "Pedir la baja de un producto que no esta en el pedido no falla y no cambia nada.",
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 0\n    }\n  ]\n}",
-              "options": {
-                "raw": {
-                  "language": "json"
-                }
-              }
-            }
+            "description": "Repetir el DELETE no falla y no cambia nada."
           },
           "event": [
             {
@@ -474,7 +580,7 @@
           ]
         },
         {
-          "name": "CU-02 Alternativa: producto de otro comercio (RN-02)",
+          "name": "CU-02 POST Alternativa: producto de otro comercio (RN-02)",
           "request": {
             "method": "POST",
             "header": [
@@ -518,7 +624,7 @@
           ]
         },
         {
-          "name": "CU-02 Alternativa: producto sin stock (RN-05)",
+          "name": "CU-02 POST Alternativa: producto sin stock (RN-05)",
           "request": {
             "method": "POST",
             "header": [
@@ -562,7 +668,7 @@
           ]
         },
         {
-          "name": "CU-02 Alternativa: producto inexistente en Catalogo",
+          "name": "CU-02 POST Alternativa: producto inexistente en Catalogo",
           "request": {
             "method": "POST",
             "header": [
@@ -606,7 +712,7 @@
           ]
         },
         {
-          "name": "CU-02 Alternativa: cantidad negativa",
+          "name": "CU-02 POST Alternativa: cantidad cero",
           "request": {
             "method": "POST",
             "header": [
@@ -625,10 +731,10 @@
                 "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
               ]
             },
-            "description": "Bean Validation sobre DTO-03: corta antes de llegar al service.",
+            "description": "Bean Validation sobre DTO-03: el alta exige cantidad mayor a cero.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": -1\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoHelado}}\",\n      \"cantidad\": 0\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -650,7 +756,7 @@
           ]
         },
         {
-          "name": "CU-02 Alternativa: lista vacia",
+          "name": "CU-02 POST Alternativa: lista vacia",
           "request": {
             "method": "POST",
             "header": [
@@ -694,7 +800,7 @@
           ]
         },
         {
-          "name": "CU-02 Alternativa: producto repetido",
+          "name": "CU-02 POST Alternativa: producto repetido",
           "request": {
             "method": "POST",
             "header": [
@@ -716,7 +822,7 @@
             "description": "Dos lineas del mismo producto dejarian el resultado a merced del orden de la lista.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 1\n    },\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 2\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 1\n    },\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 2\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -738,7 +844,7 @@
           ]
         },
         {
-          "name": "CU-02 Alternativa: pedido de otro cliente",
+          "name": "CU-02 POST Alternativa: pedido de otro cliente",
           "request": {
             "method": "POST",
             "header": [
@@ -760,13 +866,44 @@
             "description": "Un pedido ajeno responde igual que uno inexistente.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code ORDER_NOT_FOUND\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 DELETE Alternativa: pedido inexistente",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000/items/{{productoPizza}}",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000/items/{{productoPizza}}"
+              ]
+            },
+            "description": "Un id de pedido que no existe responde ORDER_NOT_FOUND."
           },
           "event": [
             {
@@ -833,7 +970,7 @@
         {
           "name": "Preparar pago rechazado: subir el total a 102000",
           "request": {
-            "method": "POST",
+            "method": "PUT",
             "header": [
               {
                 "key": "X-Cliente-Id",
@@ -845,15 +982,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}",
               "host": [
-                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}"
               ]
             },
             "description": "El mock de Pagos rechaza los cobros de 100000 en adelante: 12 pizzas alcanzan.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 12\n    }\n  ]\n}",
+              "raw": "{\n  \"cantidad\": 12\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -955,7 +1092,7 @@
         {
           "name": "Preparar pago aprobado: bajar el total a 17000",
           "request": {
-            "method": "POST",
+            "method": "PUT",
             "header": [
               {
                 "key": "X-Cliente-Id",
@@ -967,15 +1104,15 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}",
               "host": [
-                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}"
               ]
             },
             "description": "Vuelve a 2 pizzas para quedar por debajo del limite del mock.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 2\n    }\n  ]\n}",
+              "raw": "{\n  \"cantidad\": 2\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1090,7 +1227,7 @@
           ]
         },
         {
-          "name": "CU-02 Alternativa: editar un pedido confirmado (RN-04)",
+          "name": "CU-02 POST sobre un pedido confirmado (RN-04)",
           "request": {
             "method": "POST",
             "header": [
@@ -1109,16 +1246,91 @@
                 "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
               ]
             },
-            "description": "Queda aca y no en la carpeta de CU-02 porque necesita un pedido ya confirmado.",
+            "description": "Los tres verbos de CU-02 quedan aca porque necesitan un pedido ya confirmado.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
                 }
               }
             }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code ORDER_INVALID_STATE\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_INVALID_STATE\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 PUT sobre un pedido confirmado (RN-04)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}"
+              ]
+            },
+            "description": "Un pedido confirmado no se edita, ni siquiera una linea que existe.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cantidad\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code ORDER_INVALID_STATE\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_INVALID_STATE\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 DELETE sobre un pedido confirmado (RN-04)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items/{{productoPizza}}"
+              ]
+            },
+            "description": "El estado se valida antes de tocar el pedido, asi que la linea sigue ahi."
           },
           "event": [
             {

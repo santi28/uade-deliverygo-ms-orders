@@ -8,9 +8,10 @@ import org.deliverygo.ordersms.client.dto.PagoDto;
 import org.deliverygo.ordersms.client.dto.ProductoDto;
 import org.deliverygo.ordersms.client.dto.SolicitudPagoDto;
 import org.deliverygo.ordersms.client.dto.UsuarioDto;
+import org.deliverygo.ordersms.dto.AgregarItemsPedidoRequest;
 import org.deliverygo.ordersms.dto.ConfirmarPedidoRequest;
 import org.deliverygo.ordersms.dto.CrearPedidoRequest;
-import org.deliverygo.ordersms.dto.ModificarItemsPedidoRequest;
+import org.deliverygo.ordersms.dto.ModificarCantidadItemRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
 import org.deliverygo.ordersms.exception.CodigoError;
 import org.deliverygo.ordersms.exception.PedidoNotFoundException;
@@ -111,58 +112,86 @@ public class PedidoService {
     }
 
     /**
-     * SRV-02 — CU-02: aplica altas, cambios y bajas de lineas sobre un pedido en
-     * BORRADOR y recalcula el total.
+     * SRV-02 — CU-02 (alta): agrega lineas nuevas a un pedido en BORRADOR y recalcula el
+     * total.
      *
-     * <p>La cantidad que llega es la cantidad final de la linea, no un delta: si el
-     * producto ya estaba se reemplaza, si no estaba se agrega y con cantidad 0 se quita.
-     * Los productos que el request no menciona quedan como estaban.
+     * <p>Un producto que ya esta en el pedido se rechaza con VALIDATION_ERROR: la
+     * cantidad de una linea existente se cambia con {@link #modificarCantidadItem} y la
+     * linea se saca con {@link #quitarItem}. Asi un POST repetido no acumula cantidad sin
+     * que el cliente lo haya pedido.
      *
-     * <p>Reglas: solo se editan borradores (RN-04, validado antes de tocar el agregado),
-     * todas las lineas tienen que ser del comercio del pedido (RN-02) y el producto tiene
-     * que estar disponible en Catalogo (RN-05, INT-01). El precio lo pone Catalogo y lo
-     * congela {@code ItemPedido} (RN-03): nunca llega desde el request.
-     *
-     * <p>Usa REP-02 para traer el pedido con sus items en una sola consulta y despues
-     * verifica el titular en memoria: un pedido ajeno responde ORDER_NOT_FOUND igual que
-     * uno inexistente.
+     * <p>Reglas: solo se editan borradores (RN-04), todas las lineas tienen que ser del
+     * comercio del pedido (RN-02) y el producto tiene que estar disponible en Catalogo
+     * (RN-05, INT-01). El precio lo pone Catalogo y lo congela {@code ItemPedido}
+     * (RN-03): nunca llega desde el request.
      */
     @Transactional
-    public PedidoResponse gestionarItems(UUID pedidoId, UUID clienteId, ModificarItemsPedidoRequest request) {
-        // REP-02: pedido + items, sin N+1 al recalcular el total.
-        Pedido pedido = pedidoRepository.findByIdConItems(pedidoId)
-                .filter(encontrado -> encontrado.getClienteId().equals(clienteId))
-                .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
-
-        // RN-04: un pedido ya confirmado o cancelado no se edita. Se valida antes de tocar
-        // el agregado para no dejarlo a medio modificar.
-        maquinaEstados.validar(pedido.getEstado(), EstadoPedido.BORRADOR);
+    public PedidoResponse agregarItems(UUID pedidoId, UUID clienteId, AgregarItemsPedidoRequest request) {
+        Pedido pedido = buscarBorradorEditable(pedidoId, clienteId);
 
         validarProductosSinRepetir(request.items());
 
-        int agregados = 0;
-        int modificados = 0;
-        int quitados = 0;
-        for (ModificarItemsPedidoRequest.LineaItem linea : request.items()) {
-            switch (aplicarLinea(pedido, linea)) {
-                case AGREGADO -> agregados++;
-                case MODIFICADO -> modificados++;
-                case QUITADO -> quitados++;
-                case SIN_CAMBIOS -> {
-                    // Pedir la baja de un producto que no esta en el pedido no es un error:
-                    // CU-02 es idempotente para que reintentar la misma llamada no falle.
-                }
+        for (AgregarItemsPedidoRequest.LineaItem linea : request.items()) {
+            if (pedido.buscarItem(linea.productoId()).isPresent()) {
+                throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
+                        "El producto " + linea.productoId() + " ya esta en el pedido; para cambiar su cantidad"
+                                + " se usa PUT /api/v1/orders/" + pedidoId + "/items/" + linea.productoId());
             }
+
+            ProductoDto producto = buscarProductoVendible(pedido, linea.productoId());
+            pedido.agregarItem(producto.id(), producto.nombre(), linea.cantidad(), producto.precio());
         }
 
-        // RN-04: la edicion de un borrador queda asentada en el historial (BORRADOR a
-        // BORRADOR). Una llamada que no cambio ninguna linea no deja entrada: el historial
-        // es lo que lee CU-05 y no tiene por que llenarse de reintentos sin efecto.
-        if (agregados + modificados + quitados > 0) {
-            maquinaEstados.transicionar(pedido, EstadoPedido.BORRADOR,
-                    "CU-02: " + agregados + " agregados, " + modificados + " modificados, "
-                            + quitados + " quitados");
-        }
+        registrarEdicion(pedido, "CU-02: " + request.items().size() + " linea(s) agregada(s)");
+
+        return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+    }
+
+    /**
+     * SRV-02 — CU-02 (cambio): reemplaza la cantidad de una linea del pedido.
+     *
+     * <p>La cantidad enviada no se suma a la que habia. La linea tiene que existir: si el
+     * producto no esta en el pedido es VALIDATION_ERROR, porque el alta es un POST.
+     *
+     * <p>Vuelve a preguntar a Catalogo antes de subir la cantidad (RN-02, RN-05): un
+     * producto que quedo sin stock no puede crecer en el pedido. El precio sigue siendo
+     * el congelado al agregar la linea (RN-03); si cambio, lo detecta CU-03.
+     */
+    @Transactional
+    public PedidoResponse modificarCantidadItem(UUID pedidoId, UUID clienteId, UUID productoId,
+            ModificarCantidadItemRequest request) {
+        Pedido pedido = buscarBorradorEditable(pedidoId, clienteId);
+
+        ItemPedido item = pedido.buscarItem(productoId)
+                .orElseThrow(() -> new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
+                        "El producto " + productoId + " no esta en el pedido " + pedidoId));
+
+        buscarProductoVendible(pedido, productoId);
+
+        item.cambiarCantidad(request.cantidad());
+        pedido.recalcularTotal();
+
+        registrarEdicion(pedido, "CU-02: producto " + productoId + " con cantidad " + request.cantidad());
+
+        return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+    }
+
+    /**
+     * SRV-02 — CU-02 (baja): saca una linea del pedido y recalcula el total.
+     *
+     * <p>Es idempotente: si el producto no esta en el pedido responde el pedido sin
+     * cambios y sin dejar entrada en el historial, para que reintentar el DELETE no
+     * falle. No consulta Catalogo: un producto que el comercio dio de baja igual se tiene
+     * que poder sacar del borrador.
+     */
+    @Transactional
+    public PedidoResponse quitarItem(UUID pedidoId, UUID clienteId, UUID productoId) {
+        Pedido pedido = buscarBorradorEditable(pedidoId, clienteId);
+
+        pedido.buscarItem(productoId).ifPresent(item -> {
+            pedido.quitarItem(item);
+            registrarEdicion(pedido, "CU-02: producto " + productoId + " quitado");
+        });
 
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
     }
@@ -372,40 +401,32 @@ public class PedidoService {
                 }));
     }
 
-    /** Resultado de aplicar una linea de DTO-03, para resumir el cambio en el historial. */
-    private enum ResultadoLinea {
-        AGREGADO, MODIFICADO, QUITADO, SIN_CAMBIOS
+    /**
+     * Trae el pedido del cliente y verifica que se pueda editar (RN-04).
+     *
+     * <p>Usa REP-02 para traer el pedido con sus items en una sola consulta y verifica el
+     * titular en memoria: un pedido ajeno responde ORDER_NOT_FOUND igual que uno
+     * inexistente. El estado se valida antes de que el CU toque el agregado, para no
+     * dejarlo a medio modificar.
+     */
+    private Pedido buscarBorradorEditable(UUID pedidoId, UUID clienteId) {
+        // REP-02: pedido + items, sin N+1 al recalcular el total.
+        Pedido pedido = pedidoRepository.findByIdConItems(pedidoId)
+                .filter(encontrado -> encontrado.getClienteId().equals(clienteId))
+                .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
+
+        // RN-04: un pedido ya confirmado o cancelado no se edita.
+        maquinaEstados.validar(pedido.getEstado(), EstadoPedido.BORRADOR);
+
+        return pedido;
     }
 
     /**
-     * Aplica una linea de DTO-03 sobre el pedido.
-     *
-     * <p>La baja no consulta Catalogo: un producto que el comercio dio de baja despues de
-     * haberlo agregado igual se tiene que poder sacar del borrador.
+     * RN-04 — Asienta la edicion del borrador en el historial (BORRADOR a BORRADOR), que
+     * es lo que despues lee CU-05.
      */
-    private ResultadoLinea aplicarLinea(Pedido pedido, ModificarItemsPedidoRequest.LineaItem linea) {
-        Optional<ItemPedido> existente = pedido.buscarItem(linea.productoId());
-
-        if (linea.cantidad() == 0) {
-            if (existente.isEmpty()) {
-                return ResultadoLinea.SIN_CAMBIOS;
-            }
-            pedido.quitarItem(existente.get());
-            return ResultadoLinea.QUITADO;
-        }
-
-        ProductoDto producto = buscarProductoVendible(pedido, linea.productoId());
-
-        if (existente.isPresent()) {
-            // RN-03: la linea conserva el precio congelado al agregarla; si cambio en
-            // Catalogo lo detecta CU-03 al confirmar (PRICE_CHANGED).
-            existente.get().cambiarCantidad(linea.cantidad());
-            pedido.recalcularTotal();
-            return ResultadoLinea.MODIFICADO;
-        }
-
-        pedido.agregarItem(producto.id(), producto.nombre(), linea.cantidad(), producto.precio());
-        return ResultadoLinea.AGREGADO;
+    private void registrarEdicion(Pedido pedido, String motivo) {
+        maquinaEstados.transicionar(pedido, EstadoPedido.BORRADOR, motivo);
     }
 
     /**
@@ -438,9 +459,9 @@ public class PedidoService {
      * Dos lineas del mismo producto en un request dejarian el resultado a merced del
      * orden de la lista, asi que se rechaza con VALIDATION_ERROR.
      */
-    private void validarProductosSinRepetir(List<ModificarItemsPedidoRequest.LineaItem> lineas) {
+    private void validarProductosSinRepetir(List<AgregarItemsPedidoRequest.LineaItem> lineas) {
         Set<UUID> vistos = new HashSet<>();
-        for (ModificarItemsPedidoRequest.LineaItem linea : lineas) {
+        for (AgregarItemsPedidoRequest.LineaItem linea : lineas) {
             if (!vistos.add(linea.productoId())) {
                 throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
                         "El producto " + linea.productoId() + " aparece repetido en el request");

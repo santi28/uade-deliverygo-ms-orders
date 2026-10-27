@@ -11,12 +11,27 @@ Pedidos orquesta el ciclo funcional de la compra. Es dueño de `Pedido`, `ItemPe
 | CU | Nombre | Endpoint | Servicio |
 | --- | --- | --- | --- |
 | CU-01 | Crear pedido o borrador | `POST /api/v1/orders` | `crearPedido()` |
-| CU-02 | Agregar, modificar o eliminar ítems | `POST /api/v1/orders/{id}/items` | `gestionarItems()` |
+| CU-02 | Agregar ítems | `POST /api/v1/orders/{id}/items` | `agregarItems()` |
+| CU-02 | Modificar la cantidad de un ítem | `PUT /api/v1/orders/{id}/items/{productoId}` | `modificarCantidadItem()` |
+| CU-02 | Eliminar un ítem | `DELETE /api/v1/orders/{id}/items/{productoId}` | `quitarItem()` |
 | CU-03 | Confirmar pedido | `POST /api/v1/orders/{id}/confirm` | `confirmarPedido()` |
 | CU-04 | Cancelar pedido | `POST /api/v1/orders/{id}/cancel` | `cancelarPedido()` |
 | CU-05 | Consultar pedido y estado | `GET /api/v1/orders/{id}` | `consultarPedido()` |
 
 Evolución (solo si sobra tiempo): CU-06 listar pedidos del usuario, CU-10 solicitar asignación a Logística.
+
+**Desvío registrado — CU-02 abierto en tres endpoints (27/10)**
+
+La planilla define CU-02 como un único `POST /api/v1/orders/{id}/items` que recibía la cantidad final de cada línea y usaba `cantidad = 0` para quitarla. Por pedido del equipo se partió en un verbo por operación: `POST` da de alta, `PUT` cambia la cantidad de una línea y `DELETE` la saca. El CU, la regla de negocio y el `HistorialEstado` son los mismos; cambian la API (API-02, API-02b, API-02c) y los DTOs.
+
+Qué hay que corregir en la planilla: la ficha de CU-02, API-02, SEC-02 y el diagrama de secuencia, y DTO-03 (que ya no lleva cantidad 0 y ahora exige cantidad mayor a cero). `ModificarItemsPedidoRequest` quedó reemplazado por `AgregarItemsPedidoRequest` (DTO-03) y `ModificarCantidadItemRequest` (DTO-05).
+
+Decisiones que trajo el cambio, a confirmar con el docente:
+
+- Un `POST` de un producto que ya está en el pedido responde 400 en vez de acumular cantidad: el POST repetido no debería sumar sin que el cliente lo pida.
+- Un `PUT` sobre un producto que no está en el pedido responde 400 `VALIDATION_ERROR`, no 404. La tabla de errores es cerrada y `ORDER_NOT_FOUND` está definido para el pedido, no para la línea. Si se quiere el 404 de REST, hay que agregar un código `ITEM_NOT_FOUND` a la tabla.
+- El `DELETE` es idempotente: una línea que no está responde 200 con el pedido sin cambios y no deja entrada en el historial.
+- Los tres responden 200 con el pedido completo y recalculado, no 201 ni 204: después de cada cambio lo que hace falta mostrar es el total nuevo.
 
 **Reglas de negocio**
 
@@ -25,7 +40,7 @@ Evolución (solo si sobra tiempo): CU-06 listar pedidos del usuario, CU-10 solic
 | RN-01 | Todo pedido pertenece a un usuario registrado y autenticado | Service + INT-02 |
 | RN-02 | Todos los productos son del mismo comercio | Service (`comercioId` del pedido) |
 | RN-03 | El total se calcula con precios confirmados | `ItemPedido.precioUnitario` congelado + INT-01 |
-| RN-04 | Los estados siguen transiciones válidas | Máquina de estados en Service + `HistorialEstado` |
+| RN-04 | Los estados siguen transiciones válidas | `MaquinaEstados` en Service + `HistorialEstado` |
 | RN-05 | Solo productos activos y disponibles en Catálogo | INT-01 |
 | RN-06 | Todo pedido tiene dirección de entrega válida | INT-02 |
 
@@ -60,7 +75,8 @@ com.deliverygo.pedidos
   service/      PedidoService, MaquinaEstados
   repository/   PedidoRepository, HistorialEstadoRepository
   domain/       Pedido, ItemPedido, HistorialEstado, EstadoPedido
-  dto/          CrearPedidoRequest, ModificarItemsPedidoRequest, ConfirmarPedidoRequest, PedidoResponse, ErrorResponse
+  dto/          CrearPedidoRequest, AgregarItemsPedidoRequest, ModificarCantidadItemRequest,
+                ConfirmarPedidoRequest, PedidoResponse, ErrorResponse
   mapper/       PedidoMapper
   client/       CatalogoClient, UsuariosClient, PagosClient (+ impl mock y http) y client/dto
   exception/    GlobalExceptionHandler, PedidoNotFoundException, EstadoInvalidoException, ReglaNegocioException
@@ -189,12 +205,12 @@ Desvíos registrados:
 **Objetivo:** los 5 endpoints obligatorios funcionando con todas sus reglas.
 
 - [x] `MaquinaEstados` con registro en `HistorialEstado` + tests unitarios
-- [x] SRV-02 `gestionarItems()`: alta, cambio, baja, recálculo de total, RN-02, RN-05
+- [x] SRV-02 alta, cambio y baja de ítems, recálculo de total, RN-02, RN-05 (`agregarItems()`, `modificarCantidadItem()`, `quitarItem()`)
 - [x] SRV-03 `confirmarPedido()` `@Transactional`: revalidar usuario, dirección, precios y disponibilidad; pago; transición + historial
 - [x] SRV-04 `cancelarPedido()`: estado cancelable, reembolso si CONFIRMADO
 - [ ] Mocks ajustados a los DTOs reales acordados con Catálogo, Usuarios y Pagos
 - [x] Swagger con ejemplos y respuestas de error por endpoint
-- [x] Colección Postman con un caso por CU y por alternativa (`postman/`, 34 requests)
+- [x] Colección Postman con un caso por CU y por alternativa (`postman/`, 40 requests)
 
 **Salida:** los 5 CU CORE responden bien y todos los errores salen normalizados. **Cumplida**, con un ítem abierto.
 
