@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 import org.deliverygo.ordersms.dto.CrearPedidoRequest;
+import org.deliverygo.ordersms.dto.ConfirmarPedidoRequest;
 import org.deliverygo.ordersms.dto.ErrorResponse;
 import org.deliverygo.ordersms.dto.ModificarItemsPedidoRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
@@ -29,7 +30,7 @@ import java.net.URI;
 import java.util.UUID;
 
 /**
- * API-01, API-02 y API-05 — Endpoints HTTP de Pedidos.
+ * API-01 a API-05 — Endpoints HTTP de Pedidos.
  *
  * <p>El controller solo traduce HTTP: las reglas de negocio viven en
  * {@link PedidoService}.
@@ -138,6 +139,90 @@ public class PedidoController {
             UUID clienteId,
             @Valid @RequestBody ModificarItemsPedidoRequest request) {
         return pedidoService.gestionarItems(id, clienteId, request);
+    }
+
+    /**
+     * API-03 — {@code POST /api/v1/orders/{id}/confirm} (CU-03): cobra el pedido y lo
+     * pasa a CONFIRMADO.
+     */
+    @Operation(summary = "CU-03 — Confirmar pedido",
+            description = """
+                    Revalida el pedido y lo cobra. Antes de pagar vuelve a preguntar a Usuarios por el \
+                    cliente y la direccion (RN-01, RN-06, INT-02) y a Catalogo por la disponibilidad y \
+                    el precio de cada linea (RN-05, RN-03, INT-01). Un pedido sin lineas no se confirma.
+
+                    Con el cobro APROBADO (INT-03) se guarda el pagoId y el pedido pasa a CONFIRMADO en \
+                    la misma transaccion. Con el cobro RECHAZADO el pedido sigue en BORRADOR, el intento \
+                    queda en el historial y la respuesta es 422.""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Pedido confirmado y asociado al pago"),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — falta el medio de pago, el pedido"
+                    + " no tiene items, o el cliente o la direccion ya no son validos (RN-01, RN-06)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
+                    + " cliente",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido no esta en BORRADOR"
+                    + " (RN-04)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "422", description = "PAYMENT_REJECTED — Pagos rechazo el cobro;"
+                    + " PRICE_CHANGED — cambio un precio (RN-03); PRODUCT_UNAVAILABLE — una linea ya no esta"
+                    + " disponible (RN-05); MIXED_MERCHANT — una linea ya no es del comercio (RN-02)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Usuarios, Catalogo o Pagos"
+                    + " no responde (INT-01..INT-03); el pedido sigue en BORRADOR",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/{id}/confirm")
+    public PedidoResponse confirmarPedido(
+            @PathVariable
+            @Parameter(description = "Identificador del pedido") UUID id,
+            @RequestHeader(HEADER_CLIENTE)
+            @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
+            UUID clienteId,
+            @Valid @RequestBody ConfirmarPedidoRequest request) {
+        return pedidoService.confirmarPedido(id, clienteId, request);
+    }
+
+    /**
+     * API-04 — {@code POST /api/v1/orders/{id}/cancel} (CU-04): cancela el pedido,
+     * reembolsando si ya estaba confirmado.
+     *
+     * <p>No lleva cuerpo: el motivo lo arma el service segun desde donde se cancele.
+     */
+    @Operation(summary = "CU-04 — Cancelar pedido",
+            description = """
+                    Cancela el pedido. Un BORRADOR se cancela sin reembolso. Un pedido CONFIRMADO exige \
+                    reembolso: se pide a Pagos (INT-04) y solo pasa a CANCELADO si responde REEMBOLSADO; \
+                    si Pagos no responde, el pedido queda como estaba.
+
+                    Desde cualquier otro estado la cancelacion no esta permitida (RN-04).""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Pedido cancelado"),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — identificador mal formado o falta"
+                    + " la cabecera X-Cliente-Id",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
+                    + " cliente",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido no se puede cancelar"
+                    + " desde su estado actual (RN-04)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "422", description = "PAYMENT_REJECTED — Pagos no reembolso; el pedido"
+                    + " sigue CONFIRMADO",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Pagos no responde (INT-04);"
+                    + " el pedido no cambia de estado",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/{id}/cancel")
+    public PedidoResponse cancelarPedido(
+            @PathVariable
+            @Parameter(description = "Identificador del pedido") UUID id,
+            @RequestHeader(HEADER_CLIENTE)
+            @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
+            UUID clienteId) {
+        return pedidoService.cancelarPedido(id, clienteId);
     }
 
     /**

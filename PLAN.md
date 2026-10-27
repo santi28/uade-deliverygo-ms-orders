@@ -190,8 +190,8 @@ Desvíos registrados:
 
 - [x] `MaquinaEstados` con registro en `HistorialEstado` + tests unitarios
 - [x] SRV-02 `gestionarItems()`: alta, cambio, baja, recálculo de total, RN-02, RN-05
-- [ ] SRV-03 `confirmarPedido()` `@Transactional`: revalidar usuario, dirección, precios y disponibilidad; pago; transición + historial
-- [ ] SRV-04 `cancelarPedido()`: estado cancelable, reembolso si CONFIRMADO
+- [x] SRV-03 `confirmarPedido()` `@Transactional`: revalidar usuario, dirección, precios y disponibilidad; pago; transición + historial
+- [x] SRV-04 `cancelarPedido()`: estado cancelable, reembolso si CONFIRMADO
 - [ ] Mocks ajustados a los DTOs reales acordados con Catálogo, Usuarios y Pagos
 - [ ] Swagger con ejemplos y respuestas de error por endpoint
 - [ ] Colección Postman con un caso por CU y por alternativa

@@ -1,9 +1,14 @@
 package org.deliverygo.ordersms.service;
 
 import org.deliverygo.ordersms.client.CatalogoClient;
+import org.deliverygo.ordersms.client.PagosClient;
 import org.deliverygo.ordersms.client.UsuariosClient;
+import org.deliverygo.ordersms.client.dto.EstadoPago;
+import org.deliverygo.ordersms.client.dto.PagoDto;
 import org.deliverygo.ordersms.client.dto.ProductoDto;
+import org.deliverygo.ordersms.client.dto.SolicitudPagoDto;
 import org.deliverygo.ordersms.client.dto.UsuarioDto;
+import org.deliverygo.ordersms.dto.ConfirmarPedidoRequest;
 import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ModificarItemsPedidoRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
@@ -18,7 +23,10 @@ import org.deliverygo.ordersms.model.Pedido;
 import org.deliverygo.ordersms.repository.HistorialEstadoRepository;
 import org.deliverygo.ordersms.repository.PedidoRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.HashSet;
 import java.util.List;
@@ -29,8 +37,8 @@ import java.util.UUID;
 /**
  * Servicio de Pedidos: concentra las reglas de negocio de los CU CORE.
  *
- * <p>Implementa por ahora SRV-01 (CU-01), SRV-02 (CU-02) y SRV-05 (CU-05); SRV-03 y
- * SRV-04 llegan en el resto de la Etapa 2.
+ * <p>Cubre los cinco CU CORE: SRV-01 (CU-01), SRV-02 (CU-02), SRV-03 (CU-03), SRV-04
+ * (CU-04) y SRV-05 (CU-05).
  */
 @Service
 public class PedidoService {
@@ -41,18 +49,29 @@ public class PedidoService {
     private final HistorialEstadoRepository historialEstadoRepository;
     private final UsuariosClient usuariosClient;
     private final CatalogoClient catalogoClient;
+    private final PagosClient pagosClient;
     private final MaquinaEstados maquinaEstados;
     private final PedidoMapper pedidoMapper;
 
+    /**
+     * Transaccion aparte de la del CU, para dejar asentado en el historial un intento de
+     * pago rechazado aunque CU-03 termine respondiendo 422 (DM-07).
+     */
+    private final TransactionTemplate transaccionIndependiente;
+
     public PedidoService(PedidoRepository pedidoRepository, HistorialEstadoRepository historialEstadoRepository,
-            UsuariosClient usuariosClient, CatalogoClient catalogoClient, MaquinaEstados maquinaEstados,
-            PedidoMapper pedidoMapper) {
+            UsuariosClient usuariosClient, CatalogoClient catalogoClient, PagosClient pagosClient,
+            MaquinaEstados maquinaEstados, PedidoMapper pedidoMapper,
+            PlatformTransactionManager transactionManager) {
         this.pedidoRepository = pedidoRepository;
         this.historialEstadoRepository = historialEstadoRepository;
         this.usuariosClient = usuariosClient;
         this.catalogoClient = catalogoClient;
+        this.pagosClient = pagosClient;
         this.maquinaEstados = maquinaEstados;
         this.pedidoMapper = pedidoMapper;
+        this.transaccionIndependiente = new TransactionTemplate(transactionManager);
+        this.transaccionIndependiente.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /**
@@ -70,21 +89,7 @@ public class PedidoService {
      */
     @Transactional
     public PedidoResponse crearPedido(UUID clienteId, CrearPedidoRequest request) {
-        UsuarioDto usuario = usuariosClient.buscarUsuario(clienteId)
-                .orElseThrow(() -> new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
-                        "El cliente " + clienteId + " no esta registrado"));
-
-        // RN-01: el pedido pertenece a un usuario registrado y activo.
-        if (!usuario.activo()) {
-            throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
-                    "El cliente " + clienteId + " no esta activo");
-        }
-
-        // RN-06: la direccion de entrega tiene que ser una de las del usuario.
-        if (!usuario.tieneDireccion(request.direccionEntregaId())) {
-            throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
-                    "La direccion " + request.direccionEntregaId() + " no pertenece al cliente");
-        }
+        validarClienteYDireccion(clienteId, request.direccionEntregaId());
 
         // REP-01: borrador abierto del cliente.
         Optional<Pedido> borradorAbierto = pedidoRepository.findByClienteIdAndEstado(clienteId, EstadoPedido.BORRADOR);
@@ -163,6 +168,120 @@ public class PedidoService {
     }
 
     /**
+     * SRV-03 — CU-03: confirma el pedido cobrandolo, y lo pasa a CONFIRMADO en la misma
+     * transaccion.
+     *
+     * <p>Antes de cobrar revalida todo lo que pudo cambiar mientras el borrador estaba
+     * abierto: que el cliente siga activo y la direccion siga siendo suya (RN-01, RN-06,
+     * INT-02) y que cada linea siga disponible y al mismo precio (RN-05, RN-03, INT-01).
+     * Un pedido sin lineas no se confirma.
+     *
+     * <p>El cobro es INT-03, con el estado resuelto en la misma respuesta:
+     *
+     * <ul>
+     *   <li>APROBADO: se guarda el {@code pagoId} (DM-09) y se pasa a CONFIRMADO.
+     *   <li>RECHAZADO: el pedido sigue en BORRADOR y se responde 422 PAYMENT_REJECTED. El
+     *       intento queda asentado en el historial (DM-07).
+     *   <li>Si Pagos no responde, el pedido sigue en BORRADOR y se responde 503: nunca se
+     *       confirma sin cobro.
+     * </ul>
+     */
+    @Transactional
+    public PedidoResponse confirmarPedido(UUID pedidoId, UUID clienteId, ConfirmarPedidoRequest request) {
+        // REP-02: pedido + items, que es lo que hay que revalidar y lo que define el total.
+        Pedido pedido = pedidoRepository.findByIdConItems(pedidoId)
+                .filter(encontrado -> encontrado.getClienteId().equals(clienteId))
+                .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
+
+        // RN-04: solo se confirma un borrador. Se valida antes de cobrar.
+        maquinaEstados.validar(pedido.getEstado(), EstadoPedido.CONFIRMADO);
+
+        if (pedido.getItems().isEmpty()) {
+            throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
+                    "El pedido " + pedidoId + " no tiene items para confirmar");
+        }
+
+        // RN-01, RN-06: el cliente y la direccion pudieron cambiar desde CU-01.
+        validarClienteYDireccion(clienteId, pedido.getDireccionEntregaId());
+
+        revalidarLineasContraCatalogo(pedido);
+
+        // INT-03: si Pagos no responde, la excepcion sale sin tocar el estado del pedido.
+        PagoDto pago = pagosClient.cobrar(new SolicitudPagoDto(
+                pedido.getId(),
+                clienteId,
+                pedido.getTotal(),
+                pedido.getMoneda(),
+                request.medioPago()));
+
+        if (pago.status() == EstadoPago.RECHAZADO) {
+            // DM-07: el rechazo queda en el historial aunque el CU responda 422. Va en una
+            // transaccion aparte porque la del CU se deshace al lanzar la excepcion.
+            registrarPagoRechazado(pedidoId, pago.paymentId());
+            throw new ReglaNegocioException(CodigoError.PAYMENT_REJECTED,
+                    "Pagos rechazo el cobro del pedido " + pedidoId + "; el pedido sigue en BORRADOR");
+        }
+
+        if (pago.status() != EstadoPago.APROBADO) {
+            // El contrato con Eq. 4 dice que el cobro se resuelve en la misma llamada: un
+            // estado distinto es un incumplimiento, no un rechazo, y no se confirma nada.
+            throw new ReglaNegocioException(CodigoError.DEPENDENCY_UNAVAILABLE,
+                    "Pagos respondio un estado inesperado al cobrar: " + pago.status());
+        }
+
+        pedido.asociarPago(pago.paymentId());
+        maquinaEstados.transicionar(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.paymentId());
+
+        return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+    }
+
+    /**
+     * SRV-04 — CU-04: cancela el pedido.
+     *
+     * <p>Un borrador se cancela sin mas. Un pedido ya CONFIRMADO exige reembolso: se pide
+     * a Pagos por INT-04 y solo pasa a CANCELADO si responde REEMBOLSADO. Si Pagos no
+     * responde, el pedido queda como estaba (503).
+     *
+     * <p>Desde cualquier otro estado la cancelacion no esta permitida (RN-04) y responde
+     * ORDER_INVALID_STATE.
+     */
+    @Transactional
+    public PedidoResponse cancelarPedido(UUID pedidoId, UUID clienteId) {
+        // REP-03: pedido verificando el titular.
+        Pedido pedido = pedidoRepository.findByIdAndClienteId(pedidoId, clienteId)
+                .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
+
+        // RN-04: estados cancelables. Se valida antes de pedir el reembolso.
+        maquinaEstados.validar(pedido.getEstado(), EstadoPedido.CANCELADO);
+
+        String motivo = "CU-04: cancelado desde BORRADOR, sin reembolso";
+
+        if (pedido.getEstado() == EstadoPedido.CONFIRMADO) {
+            if (pedido.getPagoId() == null) {
+                // No deberia pasar: CU-03 confirma y asocia el pago en la misma transaccion.
+                // Si pasa, es inconsistencia de datos y no se cancela a ciegas.
+                throw new ReglaNegocioException(CodigoError.ORDER_INVALID_STATE,
+                        "El pedido " + pedidoId + " esta CONFIRMADO y no tiene un pago asociado");
+            }
+
+            // INT-04: si no responde, la excepcion sale sin cambiar el estado del pedido.
+            PagoDto reembolso = pagosClient.reembolsar(pedido.getPagoId(), pedido.getId());
+
+            if (reembolso.status() != EstadoPago.REEMBOLSADO) {
+                throw new ReglaNegocioException(CodigoError.PAYMENT_REJECTED,
+                        "Pagos no reembolso el pedido " + pedidoId + " (respondio " + reembolso.status()
+                                + "); el pedido sigue CONFIRMADO");
+            }
+
+            motivo = "CU-04: cancelado con reembolso del pago " + pedido.getPagoId();
+        }
+
+        maquinaEstados.transicionar(pedido, EstadoPedido.CANCELADO, motivo);
+
+        return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+    }
+
+    /**
      * SRV-05 — CU-05: devuelve el pedido con sus items y su historial de estados.
      *
      * <p>Usa REP-03 para que un cliente no pueda leer pedidos ajenos: si el pedido no es
@@ -175,6 +294,82 @@ public class PedidoService {
         Pedido pedido = pedidoRepository.findByIdAndClienteId(pedidoId, clienteId)
                 .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+    }
+
+    /**
+     * INT-02 — RN-01 y RN-06: el cliente existe y esta activo, y la direccion es una de
+     * las suyas.
+     *
+     * <p>Lo usan CU-01 y CU-03: al confirmar hay que volver a preguntar, porque el
+     * borrador pudo quedar abierto mucho tiempo.
+     */
+    private void validarClienteYDireccion(UUID clienteId, UUID direccionEntregaId) {
+        UsuarioDto usuario = usuariosClient.buscarUsuario(clienteId)
+                .orElseThrow(() -> new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
+                        "El cliente " + clienteId + " no esta registrado"));
+
+        // RN-01: el pedido pertenece a un usuario registrado y activo.
+        if (!usuario.activo()) {
+            throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
+                    "El cliente " + clienteId + " no esta activo");
+        }
+
+        // RN-06: la direccion de entrega tiene que ser una de las del usuario.
+        if (!usuario.tieneDireccion(direccionEntregaId)) {
+            throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
+                    "La direccion " + direccionEntregaId + " no pertenece al cliente");
+        }
+    }
+
+    /**
+     * INT-01 — CU-03: revalida cada linea contra Catalogo antes de cobrar.
+     *
+     * <p>El precio congelado tiene que seguir siendo el vigente (RN-03): si cambio, el
+     * cliente tiene que ver el total nuevo antes de pagar, asi que se corta con
+     * PRICE_CHANGED y el pedido queda en BORRADOR.
+     */
+    private void revalidarLineasContraCatalogo(Pedido pedido) {
+        for (ItemPedido item : pedido.getItems()) {
+            ProductoDto producto = catalogoClient.buscarProducto(item.getProductoId())
+                    .orElseThrow(() -> new ReglaNegocioException(CodigoError.PRODUCT_UNAVAILABLE,
+                            "El producto " + item.getProductoId() + " ya no esta en Catalogo"));
+
+            // RN-02: el producto pudo pasar a otro comercio desde que se agrego.
+            if (!producto.comercioId().equals(pedido.getComercioId())) {
+                throw new ReglaNegocioException(CodigoError.MIXED_MERCHANT,
+                        "El producto " + item.getProductoId() + " ya no es del comercio del pedido");
+            }
+
+            // RN-05: solo productos activos y disponibles.
+            if (!producto.disponible()) {
+                throw new ReglaNegocioException(CodigoError.PRODUCT_UNAVAILABLE,
+                        "El producto " + item.getProductoId() + " no esta disponible");
+            }
+
+            // RN-03: el total se cobra con precios confirmados.
+            if (producto.precio().compareTo(item.getPrecioUnitario()) != 0) {
+                throw new ReglaNegocioException(CodigoError.PRICE_CHANGED,
+                        "El precio del producto " + item.getProductoId() + " cambio de "
+                                + item.getPrecioUnitario() + " a " + producto.precio());
+            }
+        }
+    }
+
+    /**
+     * DM-07 — Deja el intento de pago rechazado en el historial del pedido, que sigue en
+     * BORRADOR.
+     *
+     * <p>Corre en una transaccion propia: la del CU se deshace al lanzar
+     * PAYMENT_REJECTED y se llevaria esta entrada con ella. Si no se puede asentar, el
+     * CU responde igual 422: el rechazo del cobro es lo que el cliente tiene que ver.
+     */
+    private void registrarPagoRechazado(UUID pedidoId, UUID paymentId) {
+        transaccionIndependiente.executeWithoutResult(status ->
+                pedidoRepository.findById(pedidoId).ifPresent(pedido -> {
+                    maquinaEstados.transicionar(pedido, EstadoPedido.BORRADOR,
+                            "CU-03: pago RECHAZADO " + paymentId);
+                    pedidoRepository.save(pedido);
+                }));
     }
 
     /** Resultado de aplicar una linea de DTO-03, para resumir el cambio en el historial. */
