@@ -50,7 +50,7 @@ Evolución (solo si sobra tiempo): CU-06 listar pedidos del usuario, CU-10 solic
 | Montos | `BigDecimal`, moneda `ARS` |
 | Docs API | springdoc-openapi (`/swagger-ui.html`) |
 | Validación | Bean Validation en DTOs |
-| Clientes HTTP | `RestClient` detrás de interfaces; implementación mock (perfil `mock`) y real (perfil `integracion`) |
+| Clientes HTTP | `RestClient` detrás de interfaces; implementación real con el perfil `integracion` y mock (`@Profile("!integracion")`) cuando no está activo |
 
 **Estructura de paquetes**
 
@@ -168,15 +168,21 @@ Pendientes de la planilla:
 
 **Objetivo:** proyecto que levanta, persiste y responde los primeros endpoints con mocks.
 
-- [ ] Proyecto Spring Boot + `docker-compose.yml` con PostgreSQL + perfiles `dev`, `mock`, `test`
-- [ ] Entidades `Pedido`, `ItemPedido`, `HistorialEstado`, enum `EstadoPedido` (REL-01 composición con cascade + orphanRemoval, REL-02)
-- [ ] `PedidoRepository` (REP-01..03) y `HistorialEstadoRepository` (REP-04) + tests `@DataJpaTest`
-- [ ] DTOs, `PedidoMapper`, `GlobalExceptionHandler` con `ErrorResponse`
-- [ ] Interfaces `CatalogoClient`, `UsuariosClient`, `PagosClient` + implementaciones mock
-- [ ] SRV-01 `crearPedido()` y SRV-05 `consultarPedido()`
-- [ ] README inicial, `.env.example`, plantilla de PR
+- [x] Proyecto Spring Boot + `docker-compose.yml` con PostgreSQL + perfiles `dev` (Postgres) y `test` (H2)
+- [x] Entidades `Pedido`, `ItemPedido`, `HistorialEstado`, enum `EstadoPedido` (REL-01 composición con cascade + orphanRemoval, REL-02)
+- [x] `PedidoRepository` (REP-01..03) y `HistorialEstadoRepository` (REP-04) + tests `@DataJpaTest`
+- [x] DTOs, `PedidoMapper`, `GlobalExceptionHandler` con `ErrorResponse`
+- [x] Interfaces `CatalogoClient`, `UsuariosClient`, `PagosClient` + implementaciones mock
+- [x] SRV-01 `crearPedido()` y SRV-05 `consultarPedido()`
+- [x] `.env.example` y plantilla de PR
 
-**Salida:** CU-01 y CU-05 funcionan desde Swagger con mocks.
+**Salida:** CU-01 y CU-05 funcionan desde Swagger con mocks. **Etapa cerrada.**
+
+Desvíos registrados:
+
+- No existe el perfil `mock`: los mocks son la implementación por defecto y se apagan activando `integracion` (Etapa 4). Un perfil `mock` aparte obligaría a activarlo en cada corrida y rompería el contexto de los tests. Los mocks siguen declarados como mock.
+- `dev` genera el esquema con `ddl-auto=update`. Si el modelo se estabiliza, pasar a migraciones versionadas.
+- El README se arma en la Etapa 5, con el proyecto terminado, en vez de escribir una versión inicial que haya que reescribir entera.
 
 ### Etapa 2 — CU CORE completos con mocks · hasta 27/10
 
@@ -224,7 +230,7 @@ Pendientes de la planilla:
 **Objetivo:** demo estable y todos pueden explicar cualquier parte.
 
 - [ ] Matriz de trazabilidad revisada contra el código mergeado
-- [ ] README completo (descripción, integrantes, tecnologías, ejecución, variables, endpoints, integraciones, datos de prueba, limitaciones)
+- [ ] README, de cero y completo (descripción, integrantes, tecnologías, ejecución con `docker compose` y perfiles, variables de entorno, endpoints, integraciones, datos de prueba, limitaciones)
 - [ ] Acta de decisiones técnicas actualizada
 - [ ] Guion de demo: caso principal, 3 integraciones, un error controlado
 - [ ] Ronda cruzada: cada integrante explica un CU que no programó

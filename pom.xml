@@ -56,6 +56,14 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- Perfil dev: base de datos propia del modulo en Docker (docker-compose.yml). -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Perfil test: H2 en memoria. -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>

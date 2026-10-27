@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -20,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * Tests de persistencia del agregado Pedido (ENT-01..03, REL-01, REL-02).
  */
 @DataJpaTest
+@ActiveProfiles("test")
 class PedidoPersistenceTest {
 
     private static final UUID CLIENTE_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");

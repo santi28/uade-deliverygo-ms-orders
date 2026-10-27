@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -18,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Tests de REP-01..03.
  */
 @DataJpaTest
+@ActiveProfiles("test")
 class PedidoRepositoryTest {
 
     private static final UUID CLIENTE = UUID.fromString("11111111-1111-1111-1111-111111111111");

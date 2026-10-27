@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
+import org.springframework.test.context.ActiveProfiles;
 
 import java.util.List;
 import java.util.UUID;
@@ -19,6 +20,7 @@ import static org.assertj.core.api.Assertions.tuple;
  * Tests de REP-04.
  */
 @DataJpaTest
+@ActiveProfiles("test")
 class HistorialEstadoRepositoryTest {
 
     private static final UUID CLIENTE = UUID.fromString("11111111-1111-1111-1111-111111111111");
