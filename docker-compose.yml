@@ -1,8 +1,36 @@
+# Base de datos propia del modulo Pedidos (regla de arquitectura: ningun otro modulo
+# lee estas tablas). Perfil `dev`; los tests usan H2 en memoria.
+#
+# Uso:
+#   cp .env.example .env     # ajustar la contrasena antes de levantar
+#   docker compose up -d
+#
+# Las credenciales salen del .env, que no se commitea. Los valores por defecto existen
+# solo para que `docker compose up` funcione sin configurar nada en una maquina nueva.
+
 services:
   postgres:
-    image: postgres:latest
-    container_name: postgres_container
+    image: postgres:16-alpine
+    container_name: deliverygo-pedidos-db
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: myuser
-      POSTGRES_PASSWORD: mypassword
-      POSTGRES_DB: mydatabase
+      POSTGRES_USER: ${POSTGRES_USER:-deliverygo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deliverygo}
+      POSTGRES_DB: ${POSTGRES_DB:-deliverygo_pedidos}
+    ports:
+      # Publicado en el host para que la app corra fuera de Docker durante el desarrollo.
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Sin esto los pedidos cargados se pierden en cada `docker compose down`.
+      - pedidos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Postgres acepta conexiones bastante despues de arrancar el contenedor: sin este
+      # healthcheck la app falla al conectarse en el primer `up`.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-deliverygo} -d ${POSTGRES_DB:-deliverygo_pedidos}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pedidos_pgdata:
