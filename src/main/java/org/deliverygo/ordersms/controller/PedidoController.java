@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 
 import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ErrorResponse;
+import org.deliverygo.ordersms.dto.ModificarItemsPedidoRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
 import org.deliverygo.ordersms.service.PedidoService;
 import org.springframework.http.ResponseEntity;
@@ -28,7 +29,7 @@ import java.net.URI;
 import java.util.UUID;
 
 /**
- * API-01 y API-05 — Endpoints HTTP de Pedidos.
+ * API-01, API-02 y API-05 — Endpoints HTTP de Pedidos.
  *
  * <p>El controller solo traduce HTTP: las reglas de negocio viven en
  * {@link PedidoService}.
@@ -90,6 +91,53 @@ public class PedidoController {
         PedidoResponse pedido = pedidoService.crearPedido(clienteId, request);
         URI ubicacion = uriBuilder.path("/api/v1/orders/{id}").buildAndExpand(pedido.id()).toUri();
         return ResponseEntity.created(ubicacion).body(pedido);
+    }
+
+    /**
+     * API-02 — {@code POST /api/v1/orders/{id}/items} (CU-02): aplica altas, cambios y
+     * bajas de lineas sobre un pedido en BORRADOR.
+     *
+     * <p>Responde 200 con el pedido ya recalculado: no crea un recurso nuevo, modifica el
+     * pedido.
+     */
+    @Operation(summary = "CU-02 — Agregar, modificar o eliminar items",
+            description = """
+                    Aplica sobre un pedido en BORRADOR la cantidad final de cada producto enviado: \
+                    agrega la linea si no estaba, la reemplaza si ya estaba y la quita con cantidad 0. \
+                    Los productos que el cuerpo no menciona quedan como estaban. Al final recalcula el \
+                    total y asienta la edicion en el historial.
+
+                    Valida contra Catalogo (INT-01) que el producto exista, sea del comercio del pedido \
+                    (RN-02) y este disponible (RN-05). El precio lo pone Catalogo y queda congelado en \
+                    la linea (RN-03): no viaja en el cuerpo.
+
+                    Un pedido que no esta en BORRADOR no se edita (RN-04).""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Pedido actualizado, con el total recalculado"),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — lista vacia, cantidad negativa,"
+                    + " producto repetido o producto inexistente en Catalogo",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
+                    + " cliente",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido no esta en BORRADOR"
+                    + " (RN-04)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "422", description = "MIXED_MERCHANT — producto de otro comercio (RN-02);"
+                    + " PRODUCT_UNAVAILABLE — producto no disponible (RN-05)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+            @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Catalogo no responde (INT-01)",
+                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+    })
+    @PostMapping("/{id}/items")
+    public PedidoResponse gestionarItems(
+            @PathVariable
+            @Parameter(description = "Identificador del pedido") UUID id,
+            @RequestHeader(HEADER_CLIENTE)
+            @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
+            UUID clienteId,
+            @Valid @RequestBody ModificarItemsPedidoRequest request) {
+        return pedidoService.gestionarItems(id, clienteId, request);
     }
 
     /**
