@@ -1,0 +1,1525 @@
+{
+  "info": {
+    "name": "DeliveryGo — Modulo Pedidos (Grupo 5)",
+    "description": "Un caso por CU CORE y uno por cada flujo alternativo (CU-01 a CU-05).\n\nLas carpetas estan en orden de ejecucion: correr la coleccion completa de arriba abajo deja todos los tests en verde. El orden importa porque un cliente puede tener un solo borrador abierto a la vez (REP-01), asi que los casos comparten el pedido que crea CU-01 y lo van llevando por sus estados.\n\nRequiere la app levantada con los mocks activos (cualquier perfil que no sea `integracion`) y los datos de prueba de DatosMock.\n\nLa identidad viaja en la cabecera X-Cliente-Id. Es provisoria: en la Etapa 4 la reemplaza el JWT de Usuarios.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "CU-01 Crear pedido o borrador",
+      "item": [
+        {
+          "name": "CU-01 Crear pedido (camino feliz)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}/api/v1/orders"
+              ]
+            },
+            "description": "Abre un pedido en BORRADOR y guarda su id en la variable pedidoId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comercioId\": \"{{comercioPizzeria}}\",\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "const p = pm.response.json();",
+                  "pm.collectionVariables.set(\"pedidoId\", p.id);",
+                  "pm.test(\"nace en BORRADOR, sin items y con total cero\", () => {",
+                  "    pm.expect(p.estado).to.eql(\"BORRADOR\");",
+                  "    pm.expect(p.items).to.be.an(\"array\").that.is.empty;",
+                  "    pm.expect(Number(p.total)).to.eql(0);",
+                  "});",
+                  "pm.test(\"deja el nacimiento en el historial\", () => pm.expect(p.historial).to.have.lengthOf(1));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-01 Alternativa: devuelve el borrador abierto (REP-01)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}/api/v1/orders"
+              ]
+            },
+            "description": "Con un borrador abierto del mismo comercio no crea otro: devuelve el que ya estaba.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comercioId\": \"{{comercioPizzeria}}\",\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"es el mismo pedido\", () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get(\"pedidoId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-01 Alternativa: borrador abierto de otro comercio (RN-02)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}/api/v1/orders"
+              ]
+            },
+            "description": "El cliente ya tiene un borrador de la pizzeria: pedir uno del kiosco es MIXED_MERCHANT.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comercioId\": \"{{comercioKiosco}}\",\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code MIXED_MERCHANT\", () => pm.expect(pm.response.json().code).to.eql(\"MIXED_MERCHANT\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-01 Alternativa: cliente dado de baja (RN-01)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteInactivo}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}/api/v1/orders"
+              ]
+            },
+            "description": "Usuarios responde que el cliente no esta activo (INT-02).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comercioId\": \"{{comercioPizzeria}}\",\n  \"direccionEntregaId\": \"{{direccionClienteInactivo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-01 Alternativa: direccion de otro cliente (RN-06)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}/api/v1/orders"
+              ]
+            },
+            "description": "La direccion no esta entre las del cliente (INT-02).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comercioId\": \"{{comercioPizzeria}}\",\n  \"direccionEntregaId\": \"{{direccionClienteInactivo}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-01 Alternativa: falta comercioId",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}/api/v1/orders"
+              ]
+            },
+            "description": "Bean Validation sobre DTO-01.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CU-02 Agregar, modificar o eliminar items",
+      "item": [
+        {
+          "name": "CU-02 Alta de dos lineas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "Agrega 2 pizzas y 3 empanadas: el total queda en 20600.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 2\n    },\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 3\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"dos lineas y total recalculado\", () => {",
+                  "    pm.expect(p.items).to.have.lengthOf(2);",
+                  "    pm.expect(Number(p.total)).to.eql(20600);",
+                  "});",
+                  "pm.test(\"congela el precio de Catalogo (RN-03)\", () => {",
+                  "    const pizza = p.items.find(i => i.productoId === pm.collectionVariables.get(\"productoPizza\"));",
+                  "    pm.expect(Number(pizza.precioUnitario)).to.eql(8500);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Cambio de cantidad",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "La cantidad enviada reemplaza la que habia, no se suma: 5 pizzas y las 3 empanadas.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"reemplaza la cantidad\", () => pm.expect(Number(p.total)).to.eql(46100));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Baja con cantidad 0",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "Cantidad 0 quita la linea de empanadas; quedan las 5 pizzas.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 0\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"queda una sola linea\", () => {",
+                  "    pm.expect(p.items).to.have.lengthOf(1);",
+                  "    pm.expect(Number(p.total)).to.eql(42500);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Alternativa: baja de algo que no esta (idempotente)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "Pedir la baja de un producto que no esta en el pedido no falla y no cambia nada.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 0\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"no cambia el total\", () => pm.expect(Number(pm.response.json().total)).to.eql(42500));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Alternativa: producto de otro comercio (RN-02)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "La gaseosa es del kiosco y el pedido es de la pizzeria.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoGaseosa}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code MIXED_MERCHANT\", () => pm.expect(pm.response.json().code).to.eql(\"MIXED_MERCHANT\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Alternativa: producto sin stock (RN-05)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "Catalogo responde que el helado no esta disponible (INT-01).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoHelado}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code PRODUCT_UNAVAILABLE\", () => pm.expect(pm.response.json().code).to.eql(\"PRODUCT_UNAVAILABLE\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Alternativa: producto inexistente en Catalogo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "Catalogo responde 404 para ese producto.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"77777777-7777-7777-7777-777777777777\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Alternativa: cantidad negativa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "Bean Validation sobre DTO-03: corta antes de llegar al service.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": -1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Alternativa: lista vacia",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "DTO-03 exige al menos una linea.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Alternativa: producto repetido",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "Dos lineas del mismo producto dejarian el resultado a merced del orden de la lista.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 1\n    },\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Alternativa: pedido de otro cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteInactivo}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "Un pedido ajeno responde igual que uno inexistente.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code ORDER_NOT_FOUND\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CU-03 Confirmar pedido",
+      "item": [
+        {
+          "name": "CU-03 Alternativa: falta el medio de pago",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/confirm",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/confirm"
+              ]
+            },
+            "description": "Bean Validation sobre DTO-04.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preparar pago rechazado: subir el total a 102000",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "El mock de Pagos rechaza los cobros de 100000 en adelante: 12 pizzas alcanzan.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 12\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"total por encima del limite del mock\", () => pm.expect(Number(pm.response.json().total)).to.eql(102000));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-03 Alternativa: pago rechazado (DM-07)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/confirm",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/confirm"
+              ]
+            },
+            "description": "Pagos rechaza el cobro: el pedido sigue en BORRADOR y el intento queda en el historial.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"medioPago\": \"TARJETA_CREDITO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 422\", () => pm.response.to.have.status(422));",
+                  "pm.test(\"code PAYMENT_REJECTED\", () => pm.expect(pm.response.json().code).to.eql(\"PAYMENT_REJECTED\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-03 El pedido sigue en BORRADOR tras el rechazo",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}"
+              ]
+            },
+            "description": "Comprueba DM-07: estado BORRADOR y el rechazo asentado en el historial."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"sigue en BORRADOR\", () => pm.expect(p.estado).to.eql(\"BORRADOR\"));",
+                  "pm.test(\"sin pago asociado\", () => pm.expect(p.pagoId).to.be.null);",
+                  "pm.test(\"el rechazo quedo en el historial\", () => pm.expect(p.historial[p.historial.length - 1].motivo).to.include(\"RECHAZADO\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preparar pago aprobado: bajar el total a 17000",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "Vuelve a 2 pizzas para quedar por debajo del limite del mock.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 2\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-03 Confirmar pedido (camino feliz)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/confirm",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/confirm"
+              ]
+            },
+            "description": "Revalida cliente, direccion, precios y disponibilidad, cobra y pasa a CONFIRMADO.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"medioPago\": \"TARJETA_CREDITO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.collectionVariables.set(\"pagoId\", p.pagoId);",
+                  "pm.test(\"queda CONFIRMADO con pago asociado\", () => {",
+                  "    pm.expect(p.estado).to.eql(\"CONFIRMADO\");",
+                  "    pm.expect(p.pagoId).to.not.be.null;",
+                  "});",
+                  "pm.test(\"la confirmacion quedo en el historial\", () => pm.expect(p.historial[p.historial.length - 1].estadoNuevo).to.eql(\"CONFIRMADO\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-03 Alternativa: confirmar dos veces (RN-04)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/confirm",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/confirm"
+              ]
+            },
+            "description": "Un pedido ya confirmado no se vuelve a confirmar.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"medioPago\": \"TARJETA_CREDITO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code ORDER_INVALID_STATE\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_INVALID_STATE\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-02 Alternativa: editar un pedido confirmado (RN-04)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/items"
+              ]
+            },
+            "description": "Queda aca y no en la carpeta de CU-02 porque necesita un pedido ya confirmado.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code ORDER_INVALID_STATE\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_INVALID_STATE\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CU-04 Cancelar pedido",
+      "item": [
+        {
+          "name": "CU-04 Cancelar pedido confirmado (con reembolso)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/cancel",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/cancel"
+              ]
+            },
+            "description": "Pide el reembolso a Pagos (INT-04) y solo con REEMBOLSADO pasa a CANCELADO."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"queda CANCELADO\", () => pm.expect(p.estado).to.eql(\"CANCELADO\"));",
+                  "pm.test(\"el reembolso quedo en el historial\", () => pm.expect(p.historial[p.historial.length - 1].motivo).to.include(\"reembolso\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-04 Alternativa: cancelar dos veces (RN-04)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/cancel",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/cancel"
+              ]
+            },
+            "description": "CANCELADO es terminal."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code ORDER_INVALID_STATE\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_INVALID_STATE\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preparar borrador nuevo para cancelar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}/api/v1/orders"
+              ]
+            },
+            "description": "El pedido anterior ya no esta en BORRADOR, asi que el cliente puede abrir otro.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comercioId\": \"{{comercioPizzeria}}\",\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"borradorId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-04 Cancelar un borrador (sin reembolso)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{borradorId}}/cancel",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{borradorId}}/cancel"
+              ]
+            },
+            "description": "Un BORRADOR se cancela sin pasar por Pagos."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"queda CANCELADO sin reembolso\", () => {",
+                  "    pm.expect(p.estado).to.eql(\"CANCELADO\");",
+                  "    pm.expect(p.historial[p.historial.length - 1].motivo).to.include(\"sin reembolso\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-04 Alternativa: pedido inexistente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000/cancel",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000/cancel"
+              ]
+            },
+            "description": "Un id que no existe responde ORDER_NOT_FOUND."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code ORDER_NOT_FOUND\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CU-05 Consultar pedido y estado",
+      "item": [
+        {
+          "name": "CU-05 Consultar pedido y estado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}"
+              ]
+            },
+            "description": "Devuelve el pedido con sus items y todo el historial en orden cronologico."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"trae items e historial\", () => {",
+                  "    pm.expect(p.items).to.be.an(\"array\");",
+                  "    pm.expect(p.historial.length).to.be.above(1);",
+                  "});",
+                  "pm.test(\"el historial esta en orden cronologico\", () => {",
+                  "    const fechas = p.historial.map(h => new Date(h.fechaCambio).getTime());",
+                  "    pm.expect(fechas).to.eql(fechas.slice().sort((a, b) => a - b));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-05 Alternativa: pedido de otro cliente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteInactivo}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}"
+              ]
+            },
+            "description": "Un pedido ajeno responde igual que uno inexistente, para no revelar que pedidos hay."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code ORDER_NOT_FOUND\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-05 Alternativa: pedido inexistente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000"
+              ]
+            },
+            "description": "Mismo codigo y mismo mensaje que el caso anterior."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code ORDER_NOT_FOUND\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-05 Alternativa: identificador mal formado",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/no-es-un-uuid",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/no-es-un-uuid"
+              ]
+            },
+            "description": "El id no es un UUID: lo rechaza el controller."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "description": "Puerto por defecto de la app"
+    },
+    {
+      "key": "clienteId",
+      "value": "11111111-1111-1111-1111-111111111111",
+      "description": "Cliente activo con una direccion registrada"
+    },
+    {
+      "key": "direccion",
+      "value": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "description": "Direccion del cliente activo"
+    },
+    {
+      "key": "clienteInactivo",
+      "value": "22222222-2222-2222-2222-222222222222",
+      "description": "Cliente dado de baja; sirve para RN-01 y para probar pedidos ajenos"
+    },
+    {
+      "key": "direccionClienteInactivo",
+      "value": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+      "description": "Direccion que no es del cliente activo; sirve para RN-06"
+    },
+    {
+      "key": "comercioPizzeria",
+      "value": "99999999-9999-9999-9999-999999999999"
+    },
+    {
+      "key": "comercioKiosco",
+      "value": "88888888-8888-8888-8888-888888888888"
+    },
+    {
+      "key": "productoPizza",
+      "value": "33333333-3333-3333-3333-333333333333",
+      "description": "Pizza muzzarella, 8500"
+    },
+    {
+      "key": "productoEmpanada",
+      "value": "44444444-4444-4444-4444-444444444444",
+      "description": "Empanada de carne, 1200"
+    },
+    {
+      "key": "productoGaseosa",
+      "value": "55555555-5555-5555-5555-555555555555",
+      "description": "Gaseosa del kiosco; sirve para RN-02"
+    },
+    {
+      "key": "productoHelado",
+      "value": "66666666-6666-6666-6666-666666666666",
+      "description": "Helado sin stock; sirve para RN-05"
+    },
+    {
+      "key": "pedidoId",
+      "value": "",
+      "description": "Lo setea CU-01"
+    },
+    {
+      "key": "borradorId",
+      "value": "",
+      "description": "Lo setea la preparacion de CU-04"
+    },
+    {
+      "key": "pagoId",
+      "value": "",
+      "description": "Lo setea CU-03"
+    }
+  ]
+}

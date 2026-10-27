@@ -3,6 +3,7 @@ package org.deliverygo.ordersms.controller;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -10,8 +11,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 
 import jakarta.validation.Valid;
 
-import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ConfirmarPedidoRequest;
+import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ErrorResponse;
 import org.deliverygo.ordersms.dto.ModificarItemsPedidoRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
@@ -28,6 +29,9 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.util.UUID;
+
+import static org.deliverygo.ordersms.config.OpenApiConfig.REF_EJEMPLOS;
+import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 /**
  * API-01 a API-05 — Endpoints HTTP de Pedidos.
@@ -74,18 +78,33 @@ public class PedidoController {
             @ApiResponse(responseCode = "201", description = "Pedido creado, o borrador abierto ya existente"),
             @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — falta un dato, el cliente no esta"
                     + " registrado o activo (RN-01), o la direccion no es suya (RN-06)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
             @ApiResponse(responseCode = "422", description = "MIXED_MERCHANT — el cliente ya tiene un borrador"
                     + " abierto de otro comercio (RN-02)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "MIXED_MERCHANT", ref = REF_EJEMPLOS + "MIXED_MERCHANT"))),
             @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Usuarios no responde (INT-02)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
     })
     @PostMapping
     public ResponseEntity<PedidoResponse> crearPedido(
             @RequestHeader(HEADER_CLIENTE)
             @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
             UUID clienteId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Comercio y direccion de entrega del pedido",
+                    content = @Content(examples = @ExampleObject(name = "Pedido en la pizzeria",
+                            description = "Cliente activo y direccion suya, segun los datos de los mocks",
+                            value = """
+                                    {
+                                      "comercioId": "99999999-9999-9999-9999-999999999999",
+                                      "direccionEntregaId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+                                    }""")))
             @Valid @RequestBody CrearPedidoRequest request,
             UriComponentsBuilder uriBuilder) {
 
@@ -117,18 +136,31 @@ public class PedidoController {
             @ApiResponse(responseCode = "200", description = "Pedido actualizado, con el total recalculado"),
             @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — lista vacia, cantidad negativa,"
                     + " producto repetido o producto inexistente en Catalogo",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
             @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
                     + " cliente",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_NOT_FOUND", ref = REF_EJEMPLOS + "ORDER_NOT_FOUND"))),
             @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido no esta en BORRADOR"
                     + " (RN-04)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_INVALID_STATE", ref = REF_EJEMPLOS + "ORDER_INVALID_STATE"))),
             @ApiResponse(responseCode = "422", description = "MIXED_MERCHANT — producto de otro comercio (RN-02);"
                     + " PRODUCT_UNAVAILABLE — producto no disponible (RN-05)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = {
+                            @ExampleObject(name = "MIXED_MERCHANT", ref = REF_EJEMPLOS + "MIXED_MERCHANT"),
+                            @ExampleObject(name = "PRODUCT_UNAVAILABLE", ref = REF_EJEMPLOS + "PRODUCT_UNAVAILABLE")
+                            })),
             @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Catalogo no responde (INT-01)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
     })
     @PostMapping("/{id}/items")
     public PedidoResponse gestionarItems(
@@ -137,6 +169,65 @@ public class PedidoController {
             @RequestHeader(HEADER_CLIENTE)
             @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
             UUID clienteId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Cantidad final de cada producto; 0 lo quita del pedido",
+                    content = @Content(examples = {
+                            @ExampleObject(name = "1 - Alta de dos lineas",
+                                    description = "Agrega 2 pizzas y 3 empanadas: total 20600",
+                                    value = """
+                                            {
+                                              "items": [
+                                                { "productoId": "33333333-3333-3333-3333-333333333333", \
+                                "cantidad": 2 },
+                                                { "productoId": "44444444-4444-4444-4444-444444444444", \
+                                "cantidad": 3 }
+                                              ]
+                                            }"""),
+                            @ExampleObject(name = "2 - Cambio de cantidad",
+                                    description = "Deja la linea de pizza en 5 unidades: reemplaza, no suma",
+                                    value = """
+                                            {
+                                              "items": [
+                                                { "productoId": "33333333-3333-3333-3333-333333333333", \
+                                "cantidad": 5 }
+                                              ]
+                                            }"""),
+                            @ExampleObject(name = "3 - Baja de una linea",
+                                    description = "Cantidad 0: saca las empanadas del pedido",
+                                    value = """
+                                            {
+                                              "items": [
+                                                { "productoId": "44444444-4444-4444-4444-444444444444", \
+                                "cantidad": 0 }
+                                              ]
+                                            }"""),
+                            @ExampleObject(name = "4 - Producto de otro comercio (RN-02)",
+                                    description = "La gaseosa es del kiosco: responde 422 MIXED_MERCHANT",
+                                    value = """
+                                            {
+                                              "items": [
+                                                { "productoId": "55555555-5555-5555-5555-555555555555", \
+                                "cantidad": 1 }
+                                              ]
+                                            }"""),
+                            @ExampleObject(name = "5 - Producto sin stock (RN-05)",
+                                    description = "El helado no esta disponible: responde 422 PRODUCT_UNAVAILABLE",
+                                    value = """
+                                            {
+                                              "items": [
+                                                { "productoId": "66666666-6666-6666-6666-666666666666", \
+                                "cantidad": 1 }
+                                              ]
+                                            }"""),
+                            @ExampleObject(name = "6 - Cantidad negativa",
+                                    description = "Responde 400 VALIDATION_ERROR antes de llegar al service",
+                                    value = """
+                                            {
+                                              "items": [
+                                                { "productoId": "33333333-3333-3333-3333-333333333333", \
+                                "cantidad": -1 }
+                                              ]
+                                            }""") }))
             @Valid @RequestBody ModificarItemsPedidoRequest request) {
         return pedidoService.gestionarItems(id, clienteId, request);
     }
@@ -158,20 +249,35 @@ public class PedidoController {
             @ApiResponse(responseCode = "200", description = "Pedido confirmado y asociado al pago"),
             @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — falta el medio de pago, el pedido"
                     + " no tiene items, o el cliente o la direccion ya no son validos (RN-01, RN-06)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
             @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
                     + " cliente",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_NOT_FOUND", ref = REF_EJEMPLOS + "ORDER_NOT_FOUND"))),
             @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido no esta en BORRADOR"
                     + " (RN-04)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_INVALID_STATE", ref = REF_EJEMPLOS + "ORDER_INVALID_STATE"))),
             @ApiResponse(responseCode = "422", description = "PAYMENT_REJECTED — Pagos rechazo el cobro;"
                     + " PRICE_CHANGED — cambio un precio (RN-03); PRODUCT_UNAVAILABLE — una linea ya no esta"
                     + " disponible (RN-05); MIXED_MERCHANT — una linea ya no es del comercio (RN-02)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = {
+                            @ExampleObject(name = "PAYMENT_REJECTED", ref = REF_EJEMPLOS + "PAYMENT_REJECTED"),
+                            @ExampleObject(name = "PRICE_CHANGED", ref = REF_EJEMPLOS + "PRICE_CHANGED"),
+                            @ExampleObject(name = "PRODUCT_UNAVAILABLE", ref = REF_EJEMPLOS + "PRODUCT_UNAVAILABLE"),
+                            @ExampleObject(name = "MIXED_MERCHANT", ref = REF_EJEMPLOS + "MIXED_MERCHANT")
+                            })),
             @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Usuarios, Catalogo o Pagos"
                     + " no responde (INT-01..INT-03); el pedido sigue en BORRADOR",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
     })
     @PostMapping("/{id}/confirm")
     public PedidoResponse confirmarPedido(
@@ -180,6 +286,16 @@ public class PedidoController {
             @RequestHeader(HEADER_CLIENTE)
             @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
             UUID clienteId,
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Medio con el que Pagos cobra el pedido (INT-03)",
+                    content = @Content(examples = {
+                            @ExampleObject(name = "1 - Tarjeta de credito",
+                                    description = "El mock aprueba los cobros de menos de 100000",
+                                    value = """
+                                            { "medioPago": "TARJETA_CREDITO" }"""),
+                            @ExampleObject(name = "2 - Efectivo",
+                                    value = """
+                                            { "medioPago": "EFECTIVO" }""") }))
             @Valid @RequestBody ConfirmarPedidoRequest request) {
         return pedidoService.confirmarPedido(id, clienteId, request);
     }
@@ -201,19 +317,29 @@ public class PedidoController {
             @ApiResponse(responseCode = "200", description = "Pedido cancelado"),
             @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — identificador mal formado o falta"
                     + " la cabecera X-Cliente-Id",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
             @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
                     + " cliente",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_NOT_FOUND", ref = REF_EJEMPLOS + "ORDER_NOT_FOUND"))),
             @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido no se puede cancelar"
                     + " desde su estado actual (RN-04)",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_INVALID_STATE", ref = REF_EJEMPLOS + "ORDER_INVALID_STATE"))),
             @ApiResponse(responseCode = "422", description = "PAYMENT_REJECTED — Pagos no reembolso; el pedido"
                     + " sigue CONFIRMADO",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "PAYMENT_REJECTED", ref = REF_EJEMPLOS + "PAYMENT_REJECTED"))),
             @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Pagos no responde (INT-04);"
                     + " el pedido no cambia de estado",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
     })
     @PostMapping("/{id}/cancel")
     public PedidoResponse cancelarPedido(
@@ -242,10 +368,14 @@ public class PedidoController {
             @ApiResponse(responseCode = "200", description = "Pedido encontrado"),
             @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — identificador mal formado o falta"
                     + " la cabecera X-Cliente-Id",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class))),
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
             @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
                     + " cliente",
-                    content = @Content(schema = @Schema(implementation = ErrorResponse.class)))
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_NOT_FOUND", ref = REF_EJEMPLOS + "ORDER_NOT_FOUND")))
     })
     @GetMapping("/{id}")
     public PedidoResponse consultarPedido(

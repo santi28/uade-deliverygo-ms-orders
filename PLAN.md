@@ -193,10 +193,14 @@ Desvíos registrados:
 - [x] SRV-03 `confirmarPedido()` `@Transactional`: revalidar usuario, dirección, precios y disponibilidad; pago; transición + historial
 - [x] SRV-04 `cancelarPedido()`: estado cancelable, reembolso si CONFIRMADO
 - [ ] Mocks ajustados a los DTOs reales acordados con Catálogo, Usuarios y Pagos
-- [ ] Swagger con ejemplos y respuestas de error por endpoint
-- [ ] Colección Postman con un caso por CU y por alternativa
+- [x] Swagger con ejemplos y respuestas de error por endpoint
+- [x] Colección Postman con un caso por CU y por alternativa (`postman/`, 34 requests)
 
-**Salida:** los 5 CU CORE responden bien y todos los errores salen normalizados.
+**Salida:** los 5 CU CORE responden bien y todos los errores salen normalizados. **Cumplida**, con un ítem abierto.
+
+Pendiente, no depende de nosotros: ajustar los mocks a los DTOs reales necesita que Catálogo, Usuarios y Pagos cierren sus contratos. Hasta entonces los mocks siguen con los DTOs propuestos en esta planilla, declarados como mock. Se cierra junto con la Etapa 4.
+
+Sin ejercitar de punta a punta: `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` en CU-03. El mock de Catálogo tiene precios fijos y CU-02 no deja agregar un producto no disponible, así que no hay forma de llegar a esos errores desde la API. Se cubren con los tests de Mockito de la Etapa 3.
 
 ### Etapa 3 — Calidad · hasta 03/11
 
