@@ -403,16 +403,25 @@ public class PedidoController {
     }
 
     /**
-     * API-04 — {@code DELETE /api/v1/orders/{id}/cancel} (CU-04): cancela el pedido,
+     * API-04 — {@code DELETE /api/v1/orders/{id}} (CU-04): cancela el pedido,
      * reembolsando si ya estaba confirmado.
      *
+     * <p>Cancelar es el borrado logico del pedido, asi que el DELETE va sobre el pedido
+     * mismo y no sobre un sub-recurso de accion: la fila nunca se borra, pasa a CANCELADO
+     * y queda consultable con CU-05, que es lo que el historial necesita.
+     *
      * <p>No lleva cuerpo: el motivo lo arma el service segun desde donde se cancele.
+     * Responde 200 con el pedido ya cancelado, y no 204, porque el cliente tiene que ver
+     * en que estado quedo y si hubo reembolso.
      */
     @Operation(summary = "CU-04 — Cancelar pedido",
             description = """
-                    Cancela el pedido. Un BORRADOR se cancela sin reembolso. Un pedido CONFIRMADO exige \
-                    reembolso: se pide a Pagos (INT-04) y solo pasa a CANCELADO si responde REEMBOLSADO; \
-                    si Pagos no responde, el pedido queda como estaba.
+                    Cancela el pedido: es su borrado logico, el pedido pasa a CANCELADO y sigue siendo \
+                    consultable con CU-05.
+
+                    Un BORRADOR se cancela sin reembolso. Un pedido CONFIRMADO exige reembolso: se pide \
+                    a Pagos (INT-04) y solo pasa a CANCELADO si responde REEMBOLSADO; si Pagos no \
+                    responde, el pedido queda como estaba.
 
                     Desde cualquier otro estado la cancelacion no esta permitida (RN-04).""")
     @ApiResponses({
@@ -443,7 +452,7 @@ public class PedidoController {
                             schema = @Schema(implementation = ErrorResponse.class),
                             examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
     })
-    @DeleteMapping("/{id}/cancel")
+    @DeleteMapping("/{id}")
     public PedidoResponse cancelarPedido(
             @PathVariable
             @Parameter(description = "Identificador del pedido") UUID id,

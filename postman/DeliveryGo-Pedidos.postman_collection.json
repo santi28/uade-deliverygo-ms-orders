@@ -1361,9 +1361,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/cancel",
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}",
               "host": [
-                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/cancel"
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}"
               ]
             },
             "description": "Pide el reembolso a Pagos (INT-04) y solo con REEMBOLSADO pasa a CANCELADO."
@@ -1394,9 +1394,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/cancel",
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}",
               "host": [
-                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/cancel"
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}"
               ]
             },
             "description": "CANCELADO es terminal."
@@ -1469,9 +1469,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/{{borradorId}}/cancel",
+              "raw": "{{baseUrl}}/api/v1/orders/{{borradorId}}",
               "host": [
-                "{{baseUrl}}/api/v1/orders/{{borradorId}}/cancel"
+                "{{baseUrl}}/api/v1/orders/{{borradorId}}"
               ]
             },
             "description": "Un BORRADOR se cancela sin pasar por Pagos."
@@ -1504,9 +1504,9 @@
               }
             ],
             "url": {
-              "raw": "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000/cancel",
+              "raw": "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000",
               "host": [
-                "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000/cancel"
+                "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000"
               ]
             },
             "description": "Un id que no existe responde ORDER_NOT_FOUND."
