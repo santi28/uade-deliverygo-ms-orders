@@ -1353,7 +1353,7 @@
         {
           "name": "CU-04 Cancelar pedido confirmado (con reembolso)",
           "request": {
-            "method": "POST",
+            "method": "DELETE",
             "header": [
               {
                 "key": "X-Cliente-Id",
@@ -1386,7 +1386,7 @@
         {
           "name": "CU-04 Alternativa: cancelar dos veces (RN-04)",
           "request": {
-            "method": "POST",
+            "method": "DELETE",
             "header": [
               {
                 "key": "X-Cliente-Id",
@@ -1461,7 +1461,7 @@
         {
           "name": "CU-04 Cancelar un borrador (sin reembolso)",
           "request": {
-            "method": "POST",
+            "method": "DELETE",
             "header": [
               {
                 "key": "X-Cliente-Id",
@@ -1496,7 +1496,7 @@
         {
           "name": "CU-04 Alternativa: pedido inexistente",
           "request": {
-            "method": "POST",
+            "method": "DELETE",
             "header": [
               {
                 "key": "X-Cliente-Id",

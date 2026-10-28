@@ -15,7 +15,7 @@ Pedidos orquesta el ciclo funcional de la compra. Es dueño de `Pedido`, `ItemPe
 | CU-02 | Modificar la cantidad de un ítem | `PUT /api/v1/orders/{id}/items/{productoId}` | `modificarCantidadItem()` |
 | CU-02 | Eliminar un ítem | `DELETE /api/v1/orders/{id}/items/{productoId}` | `quitarItem()` |
 | CU-03 | Confirmar pedido | `POST /api/v1/orders/{id}/confirm` | `confirmarPedido()` |
-| CU-04 | Cancelar pedido | `POST /api/v1/orders/{id}/cancel` | `cancelarPedido()` |
+| CU-04 | Cancelar pedido | `DELETE /api/v1/orders/{id}/cancel` | `cancelarPedido()` |
 | CU-05 | Consultar pedido y estado | `GET /api/v1/orders/{id}` | `consultarPedido()` |
 
 Evolución (solo si sobra tiempo): CU-06 listar pedidos del usuario, CU-10 solicitar asignación a Logística.

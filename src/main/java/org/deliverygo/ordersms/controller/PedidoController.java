@@ -403,7 +403,7 @@ public class PedidoController {
     }
 
     /**
-     * API-04 — {@code POST /api/v1/orders/{id}/cancel} (CU-04): cancela el pedido,
+     * API-04 — {@code DELETE /api/v1/orders/{id}/cancel} (CU-04): cancela el pedido,
      * reembolsando si ya estaba confirmado.
      *
      * <p>No lleva cuerpo: el motivo lo arma el service segun desde donde se cancele.
@@ -443,7 +443,7 @@ public class PedidoController {
                             schema = @Schema(implementation = ErrorResponse.class),
                             examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
     })
-    @PostMapping("/{id}/cancel")
+    @DeleteMapping("/{id}/cancel")
     public PedidoResponse cancelarPedido(
             @PathVariable
             @Parameter(description = "Identificador del pedido") UUID id,
