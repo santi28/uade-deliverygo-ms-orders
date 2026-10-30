@@ -46,6 +46,10 @@ public class PedidoService {
 
     private static final String MOTIVO_CREACION = "Pedido creado como borrador";
 
+    /** Informa si esta llamada creo el pedido o reutilizo un borrador existente. */
+    public record ResultadoCreacionPedido(PedidoResponse pedido, boolean creado) {
+    }
+
     private final PedidoRepository pedidoRepository;
     private final HistorialEstadoRepository historialEstadoRepository;
     private final UsuariosClient usuariosClient;
@@ -89,7 +93,7 @@ public class PedidoService {
      * (RN-02).
      */
     @Transactional
-    public PedidoResponse crearPedido(UUID clienteId, CrearPedidoRequest request) {
+    public ResultadoCreacionPedido crearPedido(UUID clienteId, CrearPedidoRequest request) {
         validarClienteYDireccion(clienteId, request.direccionEntregaId());
 
         // REP-01: borrador abierto del cliente.
@@ -100,7 +104,8 @@ public class PedidoService {
                 throw new ReglaNegocioException(CodigoError.MIXED_MERCHANT,
                         "El cliente ya tiene un borrador abierto de otro comercio: " + borrador.getId());
             }
-            return pedidoMapper.aResponse(borrador, leerHistorial(borrador.getId()));
+            return new ResultadoCreacionPedido(
+                    pedidoMapper.aResponse(borrador, leerHistorial(borrador.getId())), false);
         }
 
         Pedido pedido = Pedido.crear(clienteId, request.comercioId(), request.direccionEntregaId());
@@ -108,7 +113,7 @@ public class PedidoService {
         pedido.registrarTransicion(EstadoPedido.BORRADOR, MOTIVO_CREACION);
 
         Pedido guardado = pedidoRepository.save(pedido);
-        return pedidoMapper.aResponse(guardado, guardado.getHistorial());
+        return new ResultadoCreacionPedido(pedidoMapper.aResponse(guardado, guardado.getHistorial()), true);
     }
 
     /**

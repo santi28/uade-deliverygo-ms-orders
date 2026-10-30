@@ -66,7 +66,7 @@ public class PedidoController {
      * API-01 — {@code POST /api/v1/orders} (CU-01): crea el pedido en BORRADOR o devuelve
      * el borrador abierto del cliente.
      *
-     * <p>Responde 201 con la cabecera {@code Location} del recurso.
+     * <p>Responde 201 al crear y 200 al reutilizar, con la cabecera {@code Location} del recurso.
      */
     @Operation(summary = "CU-01 — Crear pedido o borrador",
             description = """
@@ -78,7 +78,8 @@ public class PedidoController {
 
                     Las lineas se cargan despues con CU-02.""")
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Pedido creado, o borrador abierto ya existente"),
+            @ApiResponse(responseCode = "201", description = "Pedido creado"),
+            @ApiResponse(responseCode = "200", description = "Borrador abierto ya existente"),
             @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — falta un dato, el cliente no esta"
                     + " registrado o activo (RN-01), o la direccion no es suya (RN-06)",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE,
@@ -111,8 +112,12 @@ public class PedidoController {
             @Valid @RequestBody CrearPedidoRequest request,
             UriComponentsBuilder uriBuilder) {
 
-        PedidoResponse pedido = pedidoService.crearPedido(clienteId, request);
+        PedidoService.ResultadoCreacionPedido resultado = pedidoService.crearPedido(clienteId, request);
+        PedidoResponse pedido = resultado.pedido();
         URI ubicacion = uriBuilder.path("/api/v1/orders/{id}").buildAndExpand(pedido.id()).toUri();
+        if (!resultado.creado()) {
+            return ResponseEntity.ok().location(ubicacion).body(pedido);
+        }
         return ResponseEntity.created(ubicacion).body(pedido);
     }
 
@@ -139,7 +144,7 @@ public class PedidoController {
                     Un pedido que no esta en BORRADOR no se edita (RN-04).""")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Pedido actualizado, con el total recalculado"),
-            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — lista vacia, cantidad menor o igual a cero, producto"
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — lista vacia, elemento nulo, cantidad menor o igual a cero, producto"
                                 + " repetido, producto inexistente en Catalogo, o producto que ya esta"
                                 + " en el pedido",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE,

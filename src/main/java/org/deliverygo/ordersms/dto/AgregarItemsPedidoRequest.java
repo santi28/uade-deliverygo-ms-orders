@@ -28,7 +28,7 @@ public record AgregarItemsPedidoRequest(
                 requiredMode = Schema.RequiredMode.REQUIRED)
         @NotEmpty(message = "items no puede estar vacio")
         @Valid
-        List<LineaItem> items) {
+        List<@NotNull(message = "items no puede contener elementos nulos") LineaItem> items) {
 
     /**
      * Linea pedida por el cliente. El precio no viaja en el request: lo resuelve

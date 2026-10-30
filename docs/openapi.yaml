@@ -257,7 +257,13 @@ paths:
         required: true
       responses:
         "201":
-          description: "Pedido creado, o borrador abierto ya existente"
+          description: "Pedido creado"
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "200":
+          description: "Borrador abierto ya existente"
           content:
             '*/*':
               schema:
@@ -364,7 +370,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/PedidoResponse"
         "400":
-          description: "VALIDATION_ERROR — lista vacia, cantidad menor o igual a cero,\
+          description: "VALIDATION_ERROR — lista vacia, elemento nulo, cantidad menor o igual a cero,\
             \ producto repetido, producto inexistente en Catalogo, o producto que\
             \ ya esta en el pedido"
           content:
