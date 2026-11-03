@@ -224,7 +224,7 @@ Sin ejercitar de punta a punta: `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` en CU-03
 
 - [x] Tests de Service con Mockito: camino feliz + cada flujo alternativo de CU-01..05
 - [x] Tests de Controller con MockMvc: 400, 404, 409/422, 503
-- [ ] Tests de rollback en confirmar y cancelar
+- [x] Tests de rollback en confirmar y cancelar
 - [ ] Timeouts y manejo de dependencia caída (503, sin datos inventados)
 - [ ] Dockerfile + compose que levanta app + BD + datos de prueba
 - [ ] Diagramas actualizados si el código cambió algo
@@ -234,6 +234,8 @@ Sin ejercitar de punta a punta: `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` en CU-03
 Tests de Service: una clase por CU (`CrearPedidoServiceTest`, `GestionarItemsServiceTest`, `ConfirmarPedidoServiceTest`, `CancelarPedidoServiceTest`, `ConsultarPedidoServiceTest`) sobre `PedidoServiceTestBase`, con repositorios y clientes de integración mockeados y `MaquinaEstados` y `PedidoMapper` reales. 60 tests; con eso quedan cubiertos `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` de CU-03, que la Etapa 2 no podía ejercitar desde la API.
 
 Tests de Controller: `PedidoControllerTest` con `@WebMvcTest` y el Service mockeado, porque lo que se verifica es la capa web: el status y el `ErrorResponse` de cada código de la tabla (400, 404, 409, 422, 503, más el 500 de contención y el 405 de transporte), la validación de los DTOs, el `Location` de API-01 y que cada endpoint le pase al Service la identidad de `X-Cliente-Id` y los ids de la ruta. El camino completo contra la base sigue en `PedidoControllerRegressionTest`.
+
+Tests de rollback: `PedidoServiceRollbackTest` con `@SpringBootTest` contra H2, sin `@Transactional` en el test (envolverlo en una transacción propia taparía justamente el rollback que se quiere observar) y con solo las integraciones mockeadas. Cada caso corre el CU y después vuelve a leer la base en transacciones nuevas. Incluye la verificación de DM-07: con pago RECHAZADO se deshace la confirmación pero la entrada del intento sobrevive, porque va en una transacción `REQUIRES_NEW`. Las lecturas que miran las líneas usan REP-02: `getItems()` es LAZY y fuera de la transacción ya no hay sesión (DM-02).
 
 Sin clases `@Nested`: surefire las descarta en una corrida normal (el nombre `...Test$Caso` no coincide con sus patrones de inclusión) y los tests dejan de ejecutarse sin que nada avise. Los casos de los tres verbos de CU-02 van en una sola clase, con el prefijo de la API en el nombre.
 
