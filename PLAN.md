@@ -223,7 +223,7 @@ Sin ejercitar de punta a punta: `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` en CU-03
 **Objetivo:** que se pueda probar y levantar desde cero.
 
 - [x] Tests de Service con Mockito: camino feliz + cada flujo alternativo de CU-01..05
-- [ ] Tests de Controller con MockMvc: 400, 404, 409/422, 503
+- [x] Tests de Controller con MockMvc: 400, 404, 409/422, 503
 - [ ] Tests de rollback en confirmar y cancelar
 - [ ] Timeouts y manejo de dependencia caída (503, sin datos inventados)
 - [ ] Dockerfile + compose que levanta app + BD + datos de prueba
@@ -232,6 +232,8 @@ Sin ejercitar de punta a punta: `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` en CU-03
 **Salida:** `docker compose up` en una máquina limpia, seed cargado y tests en verde.
 
 Tests de Service: una clase por CU (`CrearPedidoServiceTest`, `GestionarItemsServiceTest`, `ConfirmarPedidoServiceTest`, `CancelarPedidoServiceTest`, `ConsultarPedidoServiceTest`) sobre `PedidoServiceTestBase`, con repositorios y clientes de integración mockeados y `MaquinaEstados` y `PedidoMapper` reales. 60 tests; con eso quedan cubiertos `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` de CU-03, que la Etapa 2 no podía ejercitar desde la API.
+
+Tests de Controller: `PedidoControllerTest` con `@WebMvcTest` y el Service mockeado, porque lo que se verifica es la capa web: el status y el `ErrorResponse` de cada código de la tabla (400, 404, 409, 422, 503, más el 500 de contención y el 405 de transporte), la validación de los DTOs, el `Location` de API-01 y que cada endpoint le pase al Service la identidad de `X-Cliente-Id` y los ids de la ruta. El camino completo contra la base sigue en `PedidoControllerRegressionTest`.
 
 Sin clases `@Nested`: surefire las descarta en una corrida normal (el nombre `...Test$Caso` no coincide con sus patrones de inclusión) y los tests dejan de ejecutarse sin que nada avise. Los casos de los tres verbos de CU-02 van en una sola clase, con el prefijo de la API en el nombre.
 
