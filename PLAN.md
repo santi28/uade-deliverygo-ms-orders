@@ -226,7 +226,7 @@ Sin ejercitar de punta a punta: `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` en CU-03
 - [x] Tests de Controller con MockMvc: 400, 404, 409/422, 503
 - [x] Tests de rollback en confirmar y cancelar
 - [x] Timeouts y manejo de dependencia caída (503, sin datos inventados)
-- [ ] Dockerfile + compose que levanta app + BD + datos de prueba
+- [x] Dockerfile + compose que levanta app + BD + datos de prueba
 - [ ] Diagramas actualizados si el código cambió algo
 
 **Salida:** `docker compose up` en una máquina limpia, seed cargado y tests en verde.
@@ -240,6 +240,12 @@ Tests de rollback: `PedidoServiceRollbackTest` con `@SpringBootTest` contra H2, 
 Timeouts: `RestClientConfig` reemplaza al `RestClient.Builder` que autoconfigura Spring Boot, que viene **sin timeouts** (una llamada saliente esperaba indefinidamente). Centraliza lo que el plan pide para INT-01..04: `connect-timeout` 2s y `read-timeout` 3s, ajustables con `deliverygo.integraciones.*`, y la propagación de `Authorization` y `X-Correlation-Id` de la petición en curso. Están ahí y no en cada cliente para que ninguna integración quede sin timeout. `RestClientConfigTest` lo verifica contra un servidor HTTP del JDK que no contesta: un mock no sirve, porque no deja de responder.
 
 Lo que falta de este ítem depende de la Etapa 4: traducir el fallo de transporte a `DependenciaNoDisponibleException` es tarea de cada cliente HTTP, porque el mensaje nombra al módulo que no respondió, y esos clientes todavía no existen. El resto del camino del 503 ya está probado en los tres niveles: el Service propaga, el Controller responde 503 con `ErrorResponse` y el rollback no deja rastro.
+
+Docker: `Dockerfile` en dos etapas (se compila con el JDK, se corre con el JRE y con usuario sin privilegios) y el `docker-compose.yml` ahora levanta también el servicio `app`, que espera el healthcheck de Postgres antes de arrancar. Los tests no corren en el build de la imagen: se empaqueta con `-DskipTests` lo que ya está en verde.
+
+Datos de prueba en `src/main/resources/db/seed-dev.sql`, cargados solo por el perfil `dev` (`spring.sql.init.data-locations` + `defer-datasource-initialization`, para que corran después de que Hibernate crea el esquema). Siembra un pedido CONFIRMADO con pago —sirve para CU-05 y para CU-04 con reembolso— y uno CANCELADO, para mostrar el 409 de RN-04. **No** siembra ningún BORRADOR a propósito: CU-01 reutiliza el borrador abierto del cliente (REP-01), así que un borrador sembrado haría que el primer POST de la demo respondiera 200 en lugar de 201. El script es idempotente porque corre en cada arranque y la base del compose es un volumen; `DatosDePruebaDevTest` valida contra H2 los nombres de columna, los totales, el orden del historial y la idempotencia.
+
+Falta verificar `docker compose up --build` en una máquina con Docker: no hay Docker en el entorno donde se escribieron el Dockerfile y el compose. Lo que sí está verificado es que `./mvnw clean package -DskipTests` produce el jar con el nombre que copia la imagen, y que el seed carga. Hasta que alguien corra el `up` en limpio, la salida de la etapa no está cumplida.
 
 Sin clases `@Nested`: surefire las descarta en una corrida normal (el nombre `...Test$Caso` no coincide con sus patrones de inclusión) y los tests dejan de ejecutarse sin que nada avise. Los casos de los tres verbos de CU-02 van en una sola clase, con el prefijo de la API en el nombre.
 

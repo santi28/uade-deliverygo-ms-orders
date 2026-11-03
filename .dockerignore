@@ -1,0 +1,12 @@
+# Lo que no tiene que entrar al contexto de build: acelera el `docker build` y evita
+# que un target/ local se copie encima de lo que compila la imagen.
+target/
+.git/
+.github/
+.idea/
+*.iml
+.env
+docs/
+doc/
+postman/
+*.md

@@ -1,14 +1,38 @@
-# Base de datos propia del modulo Pedidos (regla de arquitectura: ningun otro modulo
-# lee estas tablas). Perfil `dev`; los tests usan H2 en memoria.
+# Modulo Pedidos completo: la app y su base propia (regla de arquitectura: ningun otro
+# modulo lee estas tablas). Perfil `dev`; los tests usan H2 en memoria.
 #
 # Uso:
-#   cp .env.example .env     # ajustar la contrasena antes de levantar
-#   docker compose up -d
+#   cp .env.example .env            # ajustar la contrasena antes de levantar
+#   docker compose up --build       # app + BD + datos de prueba
+#   docker compose up -d postgres   # solo la BD, para correr la app desde el IDE
+#
+# Con todo arriba: Swagger en http://localhost:8080/swagger-ui.html
 #
 # Las credenciales salen del .env, que no se commitea. Los valores por defecto existen
 # solo para que `docker compose up` funcione sin configurar nada en una maquina nueva.
 
 services:
+  app:
+    build: .
+    container_name: deliverygo-pedidos-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        # Espera el healthcheck, no el arranque del contenedor: Postgres acepta
+        # conexiones bastante despues, y la app fallaria al conectarse.
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      # Dentro de la red de compose la base es el servicio `postgres` en su puerto
+      # interno: no se usan POSTGRES_HOST/PORT del .env, que apuntan al host.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-deliverygo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deliverygo}
+      POSTGRES_DB: ${POSTGRES_DB:-deliverygo_pedidos}
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+
   postgres:
     image: postgres:16-alpine
     container_name: deliverygo-pedidos-db
