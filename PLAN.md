@@ -222,7 +222,7 @@ Sin ejercitar de punta a punta: `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` en CU-03
 
 **Objetivo:** que se pueda probar y levantar desde cero.
 
-- [ ] Tests de Service con Mockito: camino feliz + cada flujo alternativo de CU-01..05
+- [x] Tests de Service con Mockito: camino feliz + cada flujo alternativo de CU-01..05
 - [ ] Tests de Controller con MockMvc: 400, 404, 409/422, 503
 - [ ] Tests de rollback en confirmar y cancelar
 - [ ] Timeouts y manejo de dependencia caída (503, sin datos inventados)
@@ -230,6 +230,10 @@ Sin ejercitar de punta a punta: `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` en CU-03
 - [ ] Diagramas actualizados si el código cambió algo
 
 **Salida:** `docker compose up` en una máquina limpia, seed cargado y tests en verde.
+
+Tests de Service: una clase por CU (`CrearPedidoServiceTest`, `GestionarItemsServiceTest`, `ConfirmarPedidoServiceTest`, `CancelarPedidoServiceTest`, `ConsultarPedidoServiceTest`) sobre `PedidoServiceTestBase`, con repositorios y clientes de integración mockeados y `MaquinaEstados` y `PedidoMapper` reales. 60 tests; con eso quedan cubiertos `PRICE_CHANGED` y `PRODUCT_UNAVAILABLE` de CU-03, que la Etapa 2 no podía ejercitar desde la API.
+
+Sin clases `@Nested`: surefire las descarta en una corrida normal (el nombre `...Test$Caso` no coincide con sus patrones de inclusión) y los tests dejan de ejecutarse sin que nada avise. Los casos de los tres verbos de CU-02 van en una sola clase, con el prefijo de la API en el nombre.
 
 ### Etapa 4 — Integración real · hasta 10/11
 
