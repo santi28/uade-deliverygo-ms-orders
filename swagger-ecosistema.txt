@@ -1,0 +1,3139 @@
+openapi: 3.1.0
+info:
+  title: DeliveryGo API - Consolidado MVP Ecosistema Completo
+  description: "API unificada para el MVP de DeliveryGo. Integra los módulos de Usuarios, Pedidos, Logística, Comercios y Catálogo, Notificaciones, Opiniones y Analítica, y Pagos con autenticación JWT Bearer y control de errores estandarizado."
+  version: "1.4.0"
+servers:
+  - url: http://localhost:8080
+    description: Servidor local de desarrollo
+paths:
+  # ==========================================
+  # MÓDULO DE USUARIOS Y AUTENTICACIÓN
+  # ==========================================
+  /api/v1/auth/register:
+    post:
+      tags:
+      - Autenticación
+      summary: Registrar usuario
+      description: Crea un usuario con rol CLIENTE, estado ACTIVO y email único.
+      operationId: registrarUsuario
+      parameters:
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarUsuarioRequest"
+      responses:
+        "201":
+          description: Usuario registrado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsuarioResponse"
+        "400":
+          description: Datos de solicitud inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: El email ya está registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security: []
+
+  /api/v1/auth/login:
+    post:
+      tags:
+      - Autenticación
+      summary: Iniciar sesión
+      description: Autentica mediante email y password, emitiendo un JWT.
+      operationId: iniciarSesion
+      parameters:
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Sesión iniciada y JWT emitido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          description: Credenciales incorrectas
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: La cuenta está inactiva
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+      security: []
+
+  /api/v1/auth/password/forgot:
+    post:
+      tags:
+      - Autenticación
+      summary: Solicitar recuperación de contraseña
+      description: Solicita el envío de un token de recuperación a Notificaciones.
+      operationId: solicitarRecuperacionPassword
+      parameters:
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Solicitud aceptada para procesamiento
+      security: []
+
+  # ==========================================
+  # MÓDULO DE PEDIDOS (CU-01 a CU-05)
+  # ==========================================
+  /api/v1/orders:
+    post:
+      tags:
+      - Pedidos
+      summary: CU-01 — Crear pedido o borrador
+      description: Crea un pedido en estado BORRADOR, sin items y con total cero.
+      operationId: crearPedido
+      parameters:
+        - name: X-Cliente-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 11111111-1111-1111-1111-111111111111
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearPedidoRequest"
+      responses:
+        "201":
+          description: Pedido creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "200":
+          description: Borrador abierto ya existente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "400":
+          description: VALIDATION_ERROR — falta un dato, cliente no activo o dirección no válida
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: MIXED_MERCHANT — ya existe un borrador abierto de otro comercio
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: DEPENDENCY_UNAVAILABLE — Usuarios no responde
+
+  /api/v1/orders/{id}:
+    get:
+      tags:
+      - Pedidos
+      summary: CU-05 — Consultar pedido y estado
+      description: Devuelve el pedido con sus items y su historial de estados.
+      operationId: consultarPedido
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Cliente-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 11111111-1111-1111-1111-111111111111
+      responses:
+        "200":
+          description: Pedido encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "400":
+          description: VALIDATION_ERROR — identificador mal formado o falta cabecera
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ORDER_NOT_FOUND — el pedido no existe o pertenece a otro cliente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      tags:
+      - Pedidos
+      summary: CU-04 — Cancelar pedido
+      description: Cancela el pedido pasando su estado a CANCELADO (borrado lógico).
+      operationId: cancelarPedido
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Cliente-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 11111111-1111-1111-1111-111111111111
+      responses:
+        "200":
+          description: Pedido cancelado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "400":
+          description: VALIDATION_ERROR — formato inválido o cabecera faltante
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ORDER_NOT_FOUND — pedido inexistente o de otro cliente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: ORDER_INVALID_STATE — el pedido no se puede cancelar en su estado actual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: PAYMENT_REJECTED — Pagos no reembolsó el dinero
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: DEPENDENCY_UNAVAILABLE — Pagos no responde
+
+  /api/v1/orders/{id}/items:
+    post:
+      tags:
+      - Pedidos
+      summary: CU-02 — Agregar items
+      description: Agrega líneas nuevas a un pedido en BORRADOR y recalcula el total.
+      operationId: agregarItems
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Cliente-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 11111111-1111-1111-1111-111111111111
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgregarItemsPedidoRequest"
+      responses:
+        "200":
+          description: Pedido actualizado con el total recalculado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "400":
+          description: VALIDATION_ERROR — lista vacía, cantidad inválida o producto repetido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ORDER_NOT_FOUND — pedido inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: ORDER_INVALID_STATE — el pedido no está en BORRADOR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: MIXED_MERCHANT o PRODUCT_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: DEPENDENCY_UNAVAILABLE — Catálogo no responde
+
+  /api/v1/orders/{id}/items/{productoId}:
+    put:
+      tags:
+      - Pedidos
+      summary: CU-02 — Modificar la cantidad de un item
+      description: Reemplaza la cantidad de una línea existente en un pedido BORRADOR.
+      operationId: modificarCantidadItem
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 33333333-3333-3333-3333-333333333333
+        - name: X-Cliente-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 11111111-1111-1111-1111-111111111111
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModificarCantidadItemRequest"
+      responses:
+        "200":
+          description: Pedido actualizado con el total recalculado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "400":
+          description: VALIDATION_ERROR — cantidad <= 0 o producto no presente en el pedido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ORDER_NOT_FOUND — pedido inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: ORDER_INVALID_STATE — pedido no en BORRADOR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: MIXED_MERCHANT o PRODUCT_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: DEPENDENCY_UNAVAILABLE — Catálogo no responde
+    delete:
+      tags:
+      - Pedidos
+      summary: CU-02 — Eliminar un item
+      description: Elimina una línea de un pedido BORRADOR (operación idempotente).
+      operationId: quitarItem
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: productoId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 44444444-4444-4444-4444-444444444444
+        - name: X-Cliente-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 11111111-1111-1111-1111-111111111111
+      responses:
+        "200":
+          description: Pedido actualizado con el total recalculado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "400":
+          description: VALIDATION_ERROR — formato o cabecera inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ORDER_NOT_FOUND — pedido inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: ORDER_INVALID_STATE — pedido no en BORRADOR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/orders/{id}/confirm:
+    post:
+      tags:
+      - Pedidos
+      summary: CU-03 — Confirmar pedido
+      description: Revalida el pedido, procesa el cobro con Pagos y lo pasa a CONFIRMADO.
+      operationId: confirmarPedido
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: X-Cliente-Id
+          in: header
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: 11111111-1111-1111-1111-111111111111
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmarPedidoRequest"
+      responses:
+        "200":
+          description: Pedido confirmado y asociado al pago
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "400":
+          description: VALIDATION_ERROR — medio de pago faltante, pedido sin items o datos inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ORDER_NOT_FOUND — pedido inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: ORDER_INVALID_STATE — el pedido no está en BORRADOR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: PAYMENT_REJECTED, PRICE_CHANGED, PRODUCT_UNAVAILABLE o MIXED_MERCHANT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: DEPENDENCY_UNAVAILABLE — Usuarios, Catálogo o Pagos no responde
+
+  # ==========================================
+  # MÓDULO DE LOGÍSTICA Y REPARTIDORES
+  # ==========================================
+  /api/v1/couriers:
+    post:
+      tags:
+      - Repartidores
+      summary: CU-01 Registrar repartidor
+      description: Da de alta un repartidor vinculado a un usuario existente, con su vehículo. Queda ACTIVO y NO_DISPONIBLE.
+      operationId: registrar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarRepartidorRequest"
+      responses:
+        "201":
+          description: Repartidor registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepartidorResponse"
+        "400":
+          description: VALIDATION_ERROR / VEHICLE_PLATE_REQUIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: COURIER_DNI_DUPLICATED / COURIER_ALREADY_REGISTERED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: USER_NOT_ELIGIBLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/couriers/{id}/availability:
+    patch:
+      tags:
+      - Repartidores
+      summary: CU-02 Cambiar disponibilidad del repartidor
+      description: El repartidor titular se pone DISPONIBLE o NO_DISPONIBLE.
+      operationId: cambiarDisponibilidad
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+        - name: X-Usuario-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CambiarDisponibilidadRequest"
+      responses:
+        "200":
+          description: Disponibilidad actualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepartidorResponse"
+        "400":
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: FORBIDDEN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: COURIER_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: COURIER_HAS_ACTIVE_DELIVERY
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: COURIER_INACTIVE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/deliveries/assign:
+    post:
+      tags:
+      - Entregas
+      summary: CU-03 Asignar repartidor a una entrega
+      description: Crea o reutiliza la entrega de un pedido confirmado y asigna un repartidor disponible.
+      operationId: asignar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AsignarEntregaRequest"
+      responses:
+        "201":
+          description: Entrega ASIGNADA a un repartidor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntregaResponse"
+        "202":
+          description: No hay repartidores disponibles, queda PENDIENTE_ASIGNACION
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntregaResponse"
+        "400":
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: ORDER_NOT_FOUND / COURIER_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: DELIVERY_ALREADY_EXISTS / CONCURRENT_UPDATE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: ORDER_NOT_CONFIRMED / COURIER_NOT_AVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/deliveries/{id}/pickup:
+    post:
+      tags:
+      - Entregas
+      summary: CU-04 Registrar retiro del pedido
+      description: El repartidor informa que retiró el pedido del comercio (ASIGNADA a RETIRADA).
+      operationId: registrarRetiro
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+        - name: X-Usuario-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegistrarRetiroRequest"
+      responses:
+        "200":
+          description: Entrega RETIRADA
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntregaResponse"
+        "400":
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: COURIER_NOT_ASSIGNED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: DELIVERY_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: DELIVERY_INVALID_STATE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/deliveries/{id}/complete:
+    post:
+      tags:
+      - Entregas
+      summary: CU-05 Confirmar entrega del pedido
+      description: El repartidor confirma la entrega con el código del cliente.
+      operationId: confirmarEntrega
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+        - name: X-Usuario-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmarEntregaRequest"
+      responses:
+        "200":
+          description: Entrega COMPLETADA
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntregaResponse"
+        "400":
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: COURIER_NOT_ASSIGNED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: DELIVERY_NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: DELIVERY_NOT_PICKED_UP / DELIVERY_INVALID_STATE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: INVALID_CONFIRMATION_CODE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==========================================
+  # MÓDULO DE COMERCIOS Y CATÁLOGO
+  # ==========================================
+  /api/v1/catalogo:
+    get:
+      tags:
+      - Catálogo
+      summary: Buscar catálogo
+      description: Devuelve una página de productos activos y disponibles de comercios activos (RN-05) que cumplen los criterios.
+      operationId: buscarCatalogo
+      parameters:
+        - name: texto
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: categoriaId
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: integer
+              format: int64
+        - name: comercioId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+        - name: precioMin
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: precioMax
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 0
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 20
+      responses:
+        "200":
+          description: Página de resultados, puede estar vacía
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CatalogoResponseDTO"
+        "400":
+          description: Criterios inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+
+  /api/v1/categorias:
+    get:
+      tags:
+      - Categorías
+      summary: Listar categorías
+      description: Devuelve todas las categorías del catálogo global. Endpoint público sin token.
+      operationId: listarCategorias
+      responses:
+        "200":
+          description: Lista de categorías
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoriaDTO"
+    post:
+      tags:
+      - Categorías
+      summary: Crear categoría
+      description: Agrega una categoría al catálogo global. Solo rol Administrador.
+      operationId: crearCategoria
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoriaRequestDTO"
+      responses:
+        "201":
+          description: Categoría creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoriaDTO"
+        "400":
+          description: Nombre faltante (RN-06)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "401":
+          description: Falta el token o es inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "403":
+          description: Usuario sin rol ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+
+  /api/v1/categorias/{id}:
+    put:
+      tags:
+      - Categorías
+      summary: Modificar categoría
+      description: Cambia el nombre de una categoría. Solo rol Administrador.
+      operationId: modificarCategoria
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoriaRequestDTO"
+      responses:
+        "200":
+          description: Categoría actualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CategoriaDTO"
+        "400":
+          description: Nombre faltante o ID no numérico
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "403":
+          description: Sin rol ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Categoría inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+    delete:
+      tags:
+      - Categorías
+      summary: Eliminar categoría
+      description: Elimina una categoría del catálogo global. Solo rol Administrador.
+      operationId: eliminarCategoria
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: Categoría eliminada
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "403":
+          description: Sin rol ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Categoría inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "409":
+          description: La categoría tiene productos asociados (RN-03)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+
+  /api/v1/comercios:
+    post:
+      tags:
+      - Comercios
+      summary: Registrar comercio
+      description: Da de alta un comercio validando CUIT único (RN-01). Rol COMERCIO o ADMIN.
+      operationId: registrarComercio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearComercioRequestDTO"
+      responses:
+        "201":
+          description: Comercio creado con estado ACTIVO
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComercioResponseDTO"
+        "400":
+          description: Dato faltante o CUIT inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "403":
+          description: Sin rol COMERCIO o ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "409":
+          description: CUIT ya registrado (RN-01)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+
+  /api/v1/comercios/{id}:
+    put:
+      tags:
+      - Comercios
+      summary: Modificar información del comercio
+      description: Edita razón social, dirección o rubro de un comercio.
+      operationId: modificarComercio
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModificarComercioRequestDTO"
+      responses:
+        "200":
+          description: Comercio actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComercioResponseDTO"
+        "400":
+          description: Datos inválidos o faltantes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "403":
+          description: Sin rol COMERCIO o ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Comercio inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+
+  /api/v1/comercios/{comercioId}/sucursales:
+    get:
+      tags:
+      - Sucursales
+      summary: Listar sucursales del comercio
+      description: Devuelve las sucursales de un comercio. Endpoint público.
+      operationId: listarSucursales
+      parameters:
+        - name: comercioId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Lista de sucursales
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SucursalDTO"
+        "404":
+          description: Comercio inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+    post:
+      tags:
+      - Sucursales
+      summary: Crear sucursal
+      description: Agrega una sucursal al comercio activo (RN-02).
+      operationId: crearSucursal
+      parameters:
+        - name: comercioId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SucursalRequestDTO"
+      responses:
+        "201":
+          description: Sucursal creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SucursalDTO"
+        "400":
+          description: Dirección faltante
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "403":
+          description: Sin rol COMERCIO o ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Comercio inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "409":
+          description: El comercio está inactivo (RN-02)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+
+  /api/v1/comercios/{comercioId}/sucursales/{id}:
+    put:
+      tags:
+      - Sucursales
+      summary: Modificar sucursal
+      description: Cambia la dirección de una sucursal del comercio activo (RN-02).
+      operationId: modificarSucursal
+      parameters:
+        - name: comercioId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SucursalRequestDTO"
+      responses:
+        "200":
+          description: Sucursal actualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SucursalDTO"
+        "400":
+          description: Dirección faltante
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "403":
+          description: Sin rol COMERCIO o ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Comercio o sucursal inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "409":
+          description: El comercio está inactivo (RN-02)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+    delete:
+      tags:
+      - Sucursales
+      summary: Eliminar sucursal
+      description: Elimina una sucursal del comercio activo (RN-02).
+      operationId: eliminarSucursal
+      parameters:
+        - name: comercioId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "204":
+          description: Sucursal eliminada
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "403":
+          description: Sin rol COMERCIO o ADMIN
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Comercio o sucursal inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "409":
+          description: El comercio está inactivo (RN-02)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+
+  /api/v1/productos:
+    post:
+      tags:
+      - Productos
+      summary: Publicar producto
+      description: Da de alta un producto asociado a comercio activo (RN-02) y categorías (RN-03). Precio > 0 (RN-04).
+      operationId: publicarProducto
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearProductoRequestDTO"
+      responses:
+        "201":
+          description: Producto creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductoResponseDTO"
+        "400":
+          description: Datos inválidos o precio <= 0
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Comercio inexistente o inactivo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+
+  /api/v1/productos/{id}:
+    get:
+      tags:
+      - Productos
+      summary: Consultar detalle de producto
+      description: Devuelve la ficha de un producto por ID. Endpoint público.
+      operationId: obtenerProducto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        "200":
+          description: Ficha del producto
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductoResponseDTO"
+        "400":
+          description: ID no numérico
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Producto inexistente o inactivo (RN-05)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+
+  /api/v1/productos/{id}/disponibilidad:
+    patch:
+      tags:
+      - Productos
+      summary: Cambiar disponibilidad
+      description: Habilita o deshabilita un producto (CU-04).
+      operationId: cambiarDisponibilidadProducto
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CambiarDisponibilidadRequestDTO"
+      responses:
+        "200":
+          description: Disponibilidad actualizada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductoResponseDTO"
+        "400":
+          description: Campo disponible faltante
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Producto inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "409":
+          description: Comercio inactivo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+
+  /api/v1/productos/{id}/estado:
+    patch:
+      tags:
+      - Productos
+      summary: Desactivar o reactivar producto
+      description: Baja lógica (soft-delete) de un producto.
+      operationId: cambiarEstado
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CambiarEstadoProductoRequestDTO"
+      responses:
+        "200":
+          description: Estado actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductoResponseDTO"
+        "400":
+          description: Campo activo faltante
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Producto inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "409":
+          description: Comercio inactivo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+
+  /api/v1/productos/{id}/precio:
+    patch:
+      tags:
+      - Productos
+      summary: Modificar precio
+      description: Actualiza el precio vigente de un producto (RN-04).
+      operationId: modificarPrecio
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModificarPrecioRequestDTO"
+      responses:
+        "200":
+          description: Precio actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductoResponseDTO"
+        "400":
+          description: Precio faltante o <= 0
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "401":
+          description: Token inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "404":
+          description: Producto inexistente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+        "409":
+          description: Comercio inactivo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponseDTO"
+      security:
+      - bearerAuth: []
+
+  # ==========================================
+  # MÓDULO DE NOTIFICACIONES
+  # ==========================================
+  /api/v1/templates:
+    get:
+      tags:
+      - Plantillas (Notificaciones)
+      summary: Listar las plantillas (CU-07)
+      operationId: listarPlantillas
+      responses:
+        "200":
+          description: Todas las plantillas, activas o no
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlantillaResponseDto"
+    post:
+      tags:
+      - Plantillas (Notificaciones)
+      summary: Crear una plantilla (CU-07)
+      operationId: crearPlantilla
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlantillaRequestDto"
+      responses:
+        "201":
+          description: Plantilla creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlantillaResponseDto"
+
+  /api/v1/templates/{id}:
+    get:
+      tags:
+      - Plantillas (Notificaciones)
+      summary: Consultar una plantilla (CU-07)
+      operationId: consultarPlantilla
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        "200":
+          description: Plantilla con sus variables
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlantillaResponseDto"
+    put:
+      tags:
+      - Plantillas (Notificaciones)
+      summary: Modificar una plantilla (CU-07)
+      operationId: modificarPlantilla
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlantillaRequestDto"
+      responses:
+        "200":
+          description: Plantilla modificada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlantillaResponseDto"
+
+  /api/v1/notifications:
+    post:
+      tags:
+      - Notificaciones
+      summary: Crear una notificación (CU-01)
+      operationId: crearNotificacion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearNotificacionRequestDto"
+      responses:
+        "201":
+          description: Notificación creada, con estado ENVIADA o FALLIDA
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificacionResponseDto"
+
+  /api/v1/notifications/{id}:
+    get:
+      tags:
+      - Notificaciones
+      summary: Consultar el estado de una notificación (CU-04)
+      operationId: consultarEstado
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        "200":
+          description: Estado actual de la notificación
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificacionResponseDto"
+
+  /api/v1/notifications/{id}/retry:
+    post:
+      tags:
+      - Notificaciones
+      summary: Reintentar una notificación fallida (CU-05)
+      operationId: reintentarNotificacion
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        "200":
+          description: Reintento procesado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificacionResponseDto"
+
+  /api/v1/notifications/{id}/read:
+    patch:
+      tags:
+      - Notificaciones
+      summary: Marcar una notificación interna como leída (CU-10)
+      operationId: marcarComoLeida
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        "200":
+          description: Notificación leída
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificacionResponseDto"
+
+  /api/v1/notifications/{id}/attempts:
+    get:
+      tags:
+      - Notificaciones
+      summary: Consultar los intentos de envío de una notificación (CU-09)
+      operationId: consultarIntentos
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 1
+      responses:
+        "200":
+          description: Intentos de la notificación
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IntentoEnvioResponseDto"
+
+  /api/v1/users/{id}/notifications:
+    get:
+      tags:
+      - Historial Notificaciones
+      summary: Consultar el historial de notificaciones de un usuario (CU-06)
+      operationId: consultarHistorial
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 10
+      responses:
+        "200":
+          description: Página del historial de notificaciones
+
+  /api/v1/channels:
+    get:
+      tags:
+      - Canales
+      summary: Listar los canales (CU-08)
+      operationId: listarCanales
+      responses:
+        "200":
+          description: Canales disponibles (EMAIL, PUSH, IN_APP)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CanalDto"
+
+  /api/v1/channels/{tipo}:
+    patch:
+      tags:
+      - Canales
+      summary: Habilitar o deshabilitar un canal (CU-08)
+      operationId: cambiarEstadoCanal
+      parameters:
+        - name: tipo
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [EMAIL, PUSH, IN_APP]
+          example: PUSH
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CanalEstadoRequestDto"
+      responses:
+        "200":
+          description: Canal con su estado actual
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanalDto"
+
+  # ==========================================
+  # MÓDULO DE OPINIONES Y ANALÍTICA
+  # ==========================================
+  /api/v1/reviews:
+    post:
+      tags:
+      - Opiniones
+      summary: Crear reseña
+      operationId: crearResena
+      parameters:
+        - name: X-Usuario-Id
+          in: header
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 100
+        - name: X-Correlation-Id
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResenaRequest"
+      responses:
+        "201":
+          description: Reseña creada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResenaResponse"
+
+  /api/v1/merchants/{id}/rating:
+    get:
+      tags:
+      - Opiniones
+      summary: Calificación promedio de un comercio
+      operationId: obtenerRatingComercio
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 10
+      responses:
+        "200":
+          description: Calificación calculada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatingResponse"
+
+  /api/v1/couriers/{id}/rating:
+    get:
+      tags:
+      - Opiniones
+      summary: Calificación promedio de un repartidor
+      operationId: obtenerRatingRepartidor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+          example: 20
+      responses:
+        "200":
+          description: Calificación calculada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RatingResponse"
+
+  /api/v1/analytics/dashboard:
+    get:
+      tags:
+      - Analítica
+      summary: Consultar tablero de analítica
+      operationId: obtenerTablero
+      parameters:
+        - name: periodoDesde
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          example: 2025-01-01
+        - name: periodoHasta
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+          example: 2025-01-31
+      responses:
+        "200":
+          description: Tablero generado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardResponse"
+
+  # ==========================================
+  # MÓDULO DE PAGOS
+  # ==========================================
+  /api/v1/payments:
+    get:
+      tags:
+      - Pagos
+      summary: Listar pagos (CU-06 / CU-07)
+      operationId: API-06_listarPagos
+      parameters:
+        - name: estado
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: codigoUsuario
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: codigoPedido
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Página de resultados
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginaPagosResponse"
+      security:
+        - bearerAuth: []
+    post:
+      tags:
+      - Pagos
+      summary: Iniciar pago (CU-01 / CU-09)
+      operationId: API-01_iniciarPago
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CrearPagoRequest"
+      responses:
+        "201":
+          description: Pago creado en estado PENDIENTE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagoResponse"
+      security:
+        - bearerAuth: []
+
+  /api/v1/payments/{codigoPago}:
+    get:
+      tags:
+      - Pagos
+      summary: Consultar pago (CU-04)
+      operationId: API-04_consultarPago
+      parameters:
+        - name: codigoPago
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Pago consultado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagoResponse"
+      security:
+        - bearerAuth: []
+
+  /api/v1/payments/{codigoPago}/approve:
+    post:
+      tags:
+      - Pagos
+      summary: Autorizar pago (CU-02)
+      operationId: API-02_aprobarPago
+      parameters:
+        - name: codigoPago
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Pago APROBADO
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagoResponse"
+      security:
+        - bearerAuth: []
+
+  /api/v1/payments/{codigoPago}/reject:
+    post:
+      tags:
+      - Pagos
+      summary: Rechazar pago (CU-03)
+      operationId: API-03_rechazarPago
+      parameters:
+        - name: codigoPago
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RechazarPagoRequest"
+      responses:
+        "200":
+          description: Pago RECHAZADO
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagoResponse"
+      security:
+        - bearerAuth: []
+
+  /api/v1/payments/{codigoPago}/refund:
+    post:
+      tags:
+      - Pagos
+      summary: Reembolsar pago (CU-05)
+      operationId: API-05_reembolsarPago
+      parameters:
+        - name: codigoPago
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReembolsoRequest"
+      responses:
+        "201":
+          description: Reembolso registrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReembolsoResponse"
+      security:
+        - bearerAuth: []
+
+  /api/v1/payments/{codigoPago}/history:
+    get:
+      tags:
+      - Pagos
+      summary: Historial de estados del pago (CU-10)
+      operationId: API-08_consultarHistorial
+      parameters:
+        - name: codigoPago
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Historial del pago
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistorialEstadoResponse"
+      security:
+        - bearerAuth: []
+
+  /api/v1/payment-methods:
+    post:
+      tags:
+      - Medios de pago
+      summary: Registrar medio de pago (CU-08)
+      operationId: API-07_registrarMedioPago
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MedioPagoRequest"
+      responses:
+        "201":
+          description: Medio de pago creado y activo
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MedioPagoResponse"
+      security:
+        - bearerAuth: []
+
+components:
+  schemas:
+    # Schemas Comercios y Catálogo
+    CambiarDisponibilidadRequestDTO:
+      type: object
+      properties:
+        disponible:
+          type: boolean
+      required:
+      - disponible
+
+    CambiarEstadoProductoRequestDTO:
+      type: object
+      properties:
+        activo:
+          type: boolean
+      required:
+      - activo
+
+    CatalogoResponseDTO:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductoResponseDTO"
+        page:
+          type: integer
+          format: int32
+        size:
+          type: integer
+          format: int32
+        total:
+          type: integer
+          format: int64
+
+    CategoriaDTO:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        nombre:
+          type: string
+
+    CategoriaRequestDTO:
+      type: object
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+      required:
+      - nombre
+
+    ComercioResponseDTO:
+      type: object
+      properties:
+        cuit:
+          type: string
+        estado:
+          type: string
+        id:
+          type: integer
+          format: int64
+        razonSocial:
+          type: string
+
+    CrearComercioRequestDTO:
+      type: object
+      properties:
+        cuit:
+          type: string
+          minLength: 1
+          pattern: "\\d{11}"
+        direccion:
+          type: string
+          minLength: 1
+        razonSocial:
+          type: string
+          minLength: 1
+        rubro:
+          type: string
+          minLength: 1
+      required:
+      - cuit
+      - direccion
+      - razonSocial
+      - rubro
+
+    CrearProductoRequestDTO:
+      type: object
+      properties:
+        categoriaIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+          minItems: 1
+        comercioId:
+          type: integer
+          format: int64
+        descripcion:
+          type: string
+          minLength: 1
+        nombre:
+          type: string
+          minLength: 1
+        precio:
+          type: number
+      required:
+      - categoriaIds
+      - comercioId
+      - descripcion
+      - nombre
+      - precio
+
+    ErrorResponseDTO:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        path:
+          type: string
+        status:
+          type: integer
+          format: int32
+        timestamp:
+          type: string
+          format: date-time
+
+    ModificarComercioRequestDTO:
+      type: object
+      properties:
+        direccion:
+          type: string
+          minLength: 1
+        razonSocial:
+          type: string
+          minLength: 1
+        rubro:
+          type: string
+          minLength: 1
+      required:
+      - direccion
+      - razonSocial
+      - rubro
+
+    ModificarPrecioRequestDTO:
+      type: object
+      properties:
+        nuevoPrecio:
+          type: number
+      required:
+      - nuevoPrecio
+
+    ProductoResponseDTO:
+      type: object
+      properties:
+        categorias:
+          type: array
+          items:
+            $ref: "#/components/schemas/CategoriaDTO"
+        comercioId:
+          type: integer
+          format: int64
+        disponible:
+          type: boolean
+        estado:
+          type: string
+        id:
+          type: integer
+          format: int64
+        nombre:
+          type: string
+        precio:
+          type: number
+
+    SucursalDTO:
+      type: object
+      properties:
+        comercioId:
+          type: integer
+          format: int64
+        direccion:
+          type: string
+        id:
+          type: integer
+          format: int64
+
+    SucursalRequestDTO:
+      type: object
+      properties:
+        direccion:
+          type: string
+          minLength: 1
+      required:
+      - direccion
+
+    # Schemas Logística y Repartidores
+    RegistrarRetiroRequest:
+      type: object
+      properties:
+        observacion:
+          type: string
+          maxLength: 255
+          minLength: 0
+
+    ConfirmarEntregaRequest:
+      type: object
+      properties:
+        codigoConfirmacion:
+          type: string
+          minLength: 1
+        observacion:
+          type: string
+          maxLength: 255
+          minLength: 0
+      required:
+      - codigoConfirmacion
+
+    AsignarEntregaRequest:
+      type: object
+      properties:
+        pedidoId:
+          type: integer
+          format: int64
+        clienteId:
+          type: integer
+          format: int64
+        comercioId:
+          type: integer
+          format: int64
+        direccionRetiro:
+          type: string
+          minLength: 1
+        direccionEntrega:
+          type: string
+          minLength: 1
+        repartidorId:
+          type: integer
+          format: int64
+      required:
+      - clienteId
+      - comercioId
+      - direccionEntrega
+      - direccionRetiro
+      - pedidoId
+
+    RegistrarRepartidorRequest:
+      type: object
+      properties:
+        usuarioId:
+          type: integer
+          format: int64
+        nombre:
+          type: string
+          minLength: 1
+        apellido:
+          type: string
+          minLength: 1
+        dni:
+          type: string
+          minLength: 1
+          pattern: "\\d{7,8}"
+        telefono:
+          type: string
+          minLength: 1
+        vehiculo:
+          $ref: "#/components/schemas/VehiculoDTO"
+      required:
+      - apellido
+      - dni
+      - nombre
+      - telefono
+      - usuarioId
+      - vehiculo
+
+    VehiculoDTO:
+      type: object
+      properties:
+        tipo:
+          type: string
+          enum:
+          - BICICLETA
+          - MOTO
+          - AUTO
+        patente:
+          type: string
+        descripcion:
+          type: string
+      required:
+      - tipo
+
+    RepartidorResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        usuarioId:
+          type: integer
+          format: int64
+        nombre:
+          type: string
+        apellido:
+          type: string
+        dni:
+          type: string
+        telefono:
+          type: string
+        estado:
+          type: string
+          enum:
+          - ACTIVO
+          - INACTIVO
+        disponibilidad:
+          type: string
+          enum:
+          - DISPONIBLE
+          - NO_DISPONIBLE
+          - OCUPADO
+        vehiculo:
+          $ref: "#/components/schemas/VehiculoDTO"
+        fechaAlta:
+          type: string
+          format: date-time
+
+    CambiarDisponibilidadRequest:
+      type: object
+      properties:
+        disponibilidad:
+          type: string
+          enum:
+          - DISPONIBLE
+          - NO_DISPONIBLE
+          - OCUPADO
+      required:
+      - disponibilidad
+
+    EntregaResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        pedidoId:
+          type: integer
+          format: int64
+        repartidorId:
+          type: integer
+          format: int64
+        estado:
+          type: string
+          enum:
+          - PENDIENTE_ASIGNACION
+          - ASIGNADA
+          - RETIRADA
+          - EN_CAMINO
+          - COMPLETADA
+          - CANCELADA
+        fechaCreacion:
+          type: string
+          format: date-time
+        fechaAsignacion:
+          type: string
+          format: date-time
+        fechaRetiro:
+          type: string
+          format: date-time
+        fechaEntrega:
+          type: string
+          format: date-time
+
+    # Schemas Pedidos
+    CrearPedidoRequest:
+      type: object
+      description: Datos mínimos para abrir un pedido en BORRADOR
+      properties:
+        comercioId:
+          type: string
+          format: uuid
+          example: 99999999-9999-9999-9999-999999999999
+        direccionEntregaId:
+          type: string
+          format: uuid
+          example: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
+      required: [comercioId, direccionEntregaId]
+
+    AgregarItemsPedidoRequest:
+      type: object
+      description: Líneas nuevas de un pedido en BORRADOR
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/LineaItem"
+      required: [items]
+
+    LineaItem:
+      type: object
+      properties:
+        productoId:
+          type: string
+          format: uuid
+          example: 33333333-3333-3333-3333-333333333333
+        cantidad:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 2
+      required: [cantidad, productoId]
+
+    ModificarCantidadItemRequest:
+      type: object
+      properties:
+        cantidad:
+          type: integer
+          format: int32
+          minimum: 1
+          example: 5
+      required: [cantidad]
+
+    ConfirmarPedidoRequest:
+      type: object
+      properties:
+        medioPago:
+          type: string
+          example: TARJETA_CREDITO
+      required: [medioPago]
+
+    PedidoResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        clienteId:
+          type: string
+          format: uuid
+        comercioId:
+          type: string
+          format: uuid
+        direccionEntregaId:
+          type: string
+          format: uuid
+        estado:
+          type: string
+          enum: [BORRADOR, CONFIRMADO, EN_PREPARACION, EN_CAMINO, ENTREGADO, CANCELADO]
+        total:
+          type: number
+        moneda:
+          type: string
+        pagoId:
+          type: string
+          format: uuid
+        fechaCreacion:
+          type: string
+          format: date-time
+        fechaActualizacion:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemResponse"
+        historial:
+          type: array
+          items:
+            $ref: "#/components/schemas/HistorialResponse"
+
+    ItemResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        productoId:
+          type: string
+          format: uuid
+        nombreProducto:
+          type: string
+        cantidad:
+          type: integer
+          format: int32
+        precioUnitario:
+          type: number
+        subtotal:
+          type: number
+
+    HistorialResponse:
+      type: object
+      properties:
+        estadoAnterior:
+          type: string
+          enum: [BORRADOR, CONFIRMADO, EN_PREPARACION, EN_CAMINO, ENTREGADO, CANCELADO]
+        estadoNuevo:
+          type: string
+          enum: [BORRADOR, CONFIRMADO, EN_PREPARACION, EN_CAMINO, ENTREGADO, CANCELADO]
+        fechaCambio:
+          type: string
+          format: date-time
+        motivo:
+          type: string
+
+    # Schemas Usuarios
+    RegistrarUsuarioRequest:
+      type: object
+      properties:
+        nombre:
+          type: string
+          example: Ana
+        apellido:
+          type: string
+          example: Pérez
+        email:
+          type: string
+          format: email
+          example: ana.perez@example.com
+        telefono:
+          type: string
+          example: "+54 11 5555 0101"
+        password:
+          type: string
+          example: "ClaveDemo2026!"
+      required: [nombre, apellido, email, password]
+
+    UsuarioResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        nombre:
+          type: string
+          example: Ana
+        apellido:
+          type: string
+          example: Pérez
+        email:
+          type: string
+          example: ana.perez@example.com
+        rol:
+          type: string
+          example: CLIENTE
+        estado:
+          type: string
+          example: ACTIVO
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          example: ana.perez@example.com
+        password:
+          type: string
+          example: "ClaveDemo2026!"
+      required: [email, password]
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+        tipo:
+          type: string
+          example: Bearer
+        expiraEn:
+          type: string
+          format: date-time
+        usuarioId:
+          type: integer
+          format: int64
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        status:
+          type: integer
+          example: 400
+        code:
+          type: string
+          example: VALIDATION_ERROR
+        message:
+          type: string
+          example: La solicitud contiene datos inválidos
+        path:
+          type: string
+          example: /api/v1/orders
+        correlationId:
+          type: string
+          example: 0affd3bd-9ef5-4fe2-9057-2f74cd3b179d
+
+    # Schemas Notificaciones
+    PlantillaRequestDto:
+      type: object
+      properties:
+        nombre:
+          type: string
+          example: PEDIDO_ENTREGADO_EMAIL
+        asunto:
+          type: string
+          example: Pedido entregado
+        cuerpo:
+          type: string
+          example: "Hola {nombre}, tu pedido {pedidoId} fue entregado."
+        canal:
+          type: string
+          enum: [EMAIL, PUSH, IN_APP]
+          example: EMAIL
+      required: [asunto, cuerpo, nombre]
+
+    PlantillaResponseDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        nombre:
+          type: string
+          example: PEDIDO_CONFIRMADO_EMAIL
+        asunto:
+          type: string
+          example: Pedido confirmado
+        cuerpo:
+          type: string
+          example: "Hola {nombre}, tu pedido {pedidoId} fue confirmado."
+        activa:
+          type: boolean
+          example: true
+        canal:
+          type: string
+          example: EMAIL
+        variables:
+          type: array
+          items:
+            type: string
+
+    CrearNotificacionRequestDto:
+      type: object
+      properties:
+        destinatarioId:
+          type: integer
+          format: int64
+          example: 10
+        plantillaId:
+          type: integer
+          format: int64
+          example: 1
+        canal:
+          type: string
+          enum: [EMAIL, PUSH, IN_APP]
+          example: EMAIL
+        parametros:
+          type: object
+          additionalProperties:
+            type: string
+      required: [destinatarioId, plantillaId]
+
+    NotificacionResponseDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        destinatarioId:
+          type: integer
+          format: int64
+          example: 10
+        plantillaId:
+          type: integer
+          format: int64
+          example: 1
+        canal:
+          type: string
+          example: EMAIL
+        estado:
+          type: string
+          enum: [PENDIENTE, ENVIADA, FALLIDA, FALLIDA_DEFINITIVA]
+          example: ENVIADA
+        cantidadIntentos:
+          type: integer
+          example: 1
+
+    IntentoEnvioResponseDto:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 1
+        exitoso:
+          type: boolean
+          example: true
+        motivoFallo:
+          type: string
+
+    CanalDto:
+      type: object
+      properties:
+        tipo:
+          type: string
+          example: EMAIL
+        nombre:
+          type: string
+          example: Correo electrónico
+        activo:
+          type: boolean
+          example: true
+
+    CanalEstadoRequestDto:
+      type: object
+      properties:
+        activo:
+          type: boolean
+          example: false
+      required: [activo]
+
+    # Schemas Opiniones y Analítica
+    ResenaRequest:
+      type: object
+      properties:
+        pedidoId:
+          type: integer
+          format: int64
+          example: 501
+        tipoObjetivo:
+          type: string
+          enum: [COMERCIO, REPARTIDOR]
+          example: COMERCIO
+        puntuacion:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comentario:
+          type: string
+          example: Entrega rápida y atención cordial
+      required: [pedidoId, tipoObjetivo, puntuacion]
+
+    ResenaResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          example: 9001
+        usuarioId:
+          type: integer
+          format: int64
+          example: 100
+        pedidoId:
+          type: integer
+          format: int64
+          example: 501
+        tipoObjetivo:
+          type: string
+          example: COMERCIO
+        objetivoId:
+          type: integer
+          format: int64
+          example: 10
+        puntuacion:
+          type: integer
+          example: 5
+        comentario:
+          type: string
+          nullable: true
+          example: Buena atención
+        fechaCreacion:
+          type: string
+          format: date-time
+          example: "2025-01-31T14:30:00"
+
+    RatingResponse:
+      type: object
+      properties:
+        objetivoId:
+          type: integer
+          format: int64
+          example: 10
+        tipoObjetivo:
+          type: string
+          example: COMERCIO
+        promedio:
+          type: number
+          nullable: true
+          example: 4.75
+        cantidadResenas:
+          type: integer
+          format: int64
+          example: 12
+
+    DashboardResponse:
+      type: object
+      properties:
+        generadoEn:
+          type: string
+          format: date-time
+          example: "2025-01-31T14:30:00"
+        metricas:
+          type: array
+          items:
+            $ref: "#/components/schemas/MetricaResumen"
+        parcial:
+          type: boolean
+          example: false
+
+    MetricaResumen:
+      type: object
+      properties:
+        fuente:
+          type: string
+          example: RESENAS
+        tipoMetrica:
+          type: string
+          example: CANTIDAD_RESENAS
+        periodoDesde:
+          type: string
+          format: date
+          example: "2025-01-01"
+        periodoHasta:
+          type: string
+          format: date
+          example: "2025-01-31"
+        valor:
+          type: number
+          nullable: true
+          example: 25.0
+
+    # Schemas Pagos y Medios de Pago
+    MedioPagoResumenResponse:
+      type: object
+      properties:
+        tipo:
+          type: string
+          example: TARJETA_CREDITO
+        detalleEnmascarado:
+          type: string
+          example: '**** **** **** 1234'
+
+    PagoResponse:
+      type: object
+      properties:
+        codigoPago:
+          type: string
+          format: uuid
+        codigoPedido:
+          type: string
+          format: uuid
+        estado:
+          type: string
+          enum: [PENDIENTE, APROBADO, RECHAZADO, REEMBOLSADO]
+          example: PENDIENTE
+        monto:
+          type: number
+          example: 15000.0
+        moneda:
+          type: string
+          example: ARS
+        medioPago:
+          $ref: "#/components/schemas/MedioPagoResumenResponse"
+        fechaCreacion:
+          type: string
+          format: date-time
+        fechaActualizacion:
+          type: string
+          format: date-time
+
+    CrearPagoRequest:
+      type: object
+      properties:
+        codigoPedido:
+          type: string
+          format: uuid
+          example: 00000000-0000-0000-0001-000000000001
+        codigoUsuario:
+          type: string
+          format: uuid
+          example: 00000000-0000-0000-0000-000000000001
+        codigoMedioPago:
+          type: string
+          format: uuid
+        monto:
+          type: number
+          example: 15000.0
+        moneda:
+          type: string
+          example: ARS
+        claveControl:
+          type: string
+          example: pedido-0001-intento-1
+      required: [claveControl, codigoMedioPago, codigoPedido, codigoUsuario, moneda, monto]
+
+    RechazarPagoRequest:
+      type: object
+      properties:
+        motivo:
+          type: string
+          example: Fondos insuficientes
+
+    ReembolsoResponse:
+      type: object
+      properties:
+        codigoReembolso:
+          type: string
+          format: uuid
+        codigoPago:
+          type: string
+          format: uuid
+        monto:
+          type: number
+          example: 5000.0
+        estado:
+          type: string
+          example: APROBADO
+        montoDisponible:
+          type: number
+          example: 10000.0
+        fechaSolicitud:
+          type: string
+          format: date-time
+        fechaResolucion:
+          type: string
+          format: date-time
+
+    ReembolsoRequest:
+      type: object
+      properties:
+        monto:
+          type: number
+          example: 5000.0
+        motivo:
+          type: string
+          example: Pedido cancelado por el cliente
+        claveControl:
+          type: string
+          example: reembolso-0001-1
+      required: [claveControl, monto, motivo]
+
+    MedioPagoResponse:
+      type: object
+      properties:
+        codigoMedioPago:
+          type: string
+          format: uuid
+        tipo:
+          type: string
+          example: TARJETA_CREDITO
+        detalleEnmascarado:
+          type: string
+          example: '**** **** **** 1234'
+        activo:
+          type: boolean
+
+    MedioPagoRequest:
+      type: object
+      properties:
+        tipo:
+          type: string
+          enum: [TARJETA_CREDITO, TARJETA_DEBITO, BILLETERA_VIRTUAL, TRANSFERENCIA]
+          example: TARJETA_CREDITO
+        numero:
+          type: string
+          example: 4111 1111 1111 1234
+      required: [numero, tipo]
+
+    PaginaPagosResponse:
+      type: object
+      properties:
+        content:
+          type: array
+          items:
+            $ref: "#/components/schemas/PagoResponse"
+        page:
+          type: integer
+          example: 0
+        size:
+          type: integer
+          example: 20
+        totalElements:
+          type: integer
+          format: int64
+        totalPages:
+          type: integer
+
+    HistorialEstadoResponse:
+      type: object
+      properties:
+        estadoAnterior:
+          type: string
+          nullable: true
+          example: PENDIENTE
+        estadoNuevo:
+          type: string
+          example: APROBADO
+        motivo:
+          type: string
+        fecha:
+          type: string
+          format: date-time
+
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+    bearerAuth:
+      type: http
+      description: Token obtenido en POST /auth/login o por el módulo de usuarios
+      scheme: bearer
+      bearerFormat: JWT

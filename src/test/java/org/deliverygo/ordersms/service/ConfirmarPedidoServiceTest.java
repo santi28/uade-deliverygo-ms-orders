@@ -64,7 +64,7 @@ class ConfirmarPedidoServiceTest extends PedidoServiceTestBase {
         given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(pedido));
         dadoClienteActivo();
         given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoVendible(PRODUCTO)));
-        given(pagosClient.cobrar(any(SolicitudPagoDto.class)))
+        given(pagosClient.iniciarPago(any(SolicitudPagoDto.class)))
                 .willReturn(pago(EstadoPago.APROBADO, TOTAL));
         dadoHistorialPersistido(pedido);
 
@@ -89,19 +89,64 @@ class ConfirmarPedidoServiceTest extends PedidoServiceTestBase {
         given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(pedido));
         dadoClienteActivo();
         given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoVendible(PRODUCTO)));
-        given(pagosClient.cobrar(any(SolicitudPagoDto.class)))
+        given(pagosClient.iniciarPago(any(SolicitudPagoDto.class)))
                 .willReturn(pago(EstadoPago.APROBADO, TOTAL));
         dadoHistorialPersistido(pedido);
 
         service.confirmarPedido(PEDIDO_ID, CLIENTE, REQUEST);
 
         ArgumentCaptor<SolicitudPagoDto> solicitud = ArgumentCaptor.forClass(SolicitudPagoDto.class);
-        verify(pagosClient).cobrar(solicitud.capture());
-        assertThat(solicitud.getValue().orderId()).isEqualTo(PEDIDO_ID);
-        assertThat(solicitud.getValue().userId()).isEqualTo(CLIENTE);
-        assertThat(solicitud.getValue().amount()).isEqualByComparingTo(TOTAL);
-        assertThat(solicitud.getValue().currency()).isEqualTo(Pedido.MONEDA_POR_DEFECTO);
-        assertThat(solicitud.getValue().paymentMethod()).isEqualTo("TARJETA_CREDITO");
+        verify(pagosClient).iniciarPago(solicitud.capture());
+        assertThat(solicitud.getValue().codigoPedido()).isEqualTo(PEDIDO_ID);
+        assertThat(solicitud.getValue().codigoUsuario()).isEqualTo(CLIENTE);
+        assertThat(solicitud.getValue().monto()).isEqualByComparingTo(TOTAL);
+        assertThat(solicitud.getValue().moneda()).isEqualTo(Pedido.MONEDA_POR_DEFECTO);
+        // INT-03: la clave de control deriva del pedido, para que reintentar CU-03 no
+        // genere dos pagos.
+        assertThat(solicitud.getValue().claveControl()).contains(PEDIDO_ID.toString());
+    }
+
+    @Test
+    @DisplayName("INT-03: con pago PENDIENTE guarda el pagoId y sigue en BORRADOR")
+    void conPagoPendienteSigueEnBorradorConElPagoAsociado() {
+        Pedido pedido = borradorConItem(2);
+        given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(pedido));
+        dadoClienteActivo();
+        given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoVendible(PRODUCTO)));
+        given(pagosClient.iniciarPago(any(SolicitudPagoDto.class)))
+                .willReturn(pago(EstadoPago.PENDIENTE, TOTAL));
+        dadoHistorialPersistido(pedido);
+
+        PedidoResponse respuesta = service.confirmarPedido(PEDIDO_ID, CLIENTE, REQUEST);
+
+        // Desvio registrado (03/11): Pagos autoriza en una llamada aparte, asi que
+        // iniciar el pago no confirma el pedido. Pasar a CONFIRMADO depende de CU-09.
+        assertThat(respuesta.estado()).isEqualTo(EstadoPedido.BORRADOR);
+        // El pagoId queda guardado: es con lo que CU-09 va a poder identificar el aviso.
+        assertThat(respuesta.pagoId()).isEqualTo(PAGO_ID);
+        assertThat(respuesta.historial()).last()
+                .satisfies(entrada -> {
+                    assertThat(entrada.estadoAnterior()).isEqualTo(EstadoPedido.BORRADOR);
+                    assertThat(entrada.estadoNuevo()).isEqualTo(EstadoPedido.BORRADOR);
+                    assertThat(entrada.motivo()).contains(PAGO_ID.toString(), "PENDIENTE");
+                });
+    }
+
+    @Test
+    @DisplayName("INT-03: un REEMBOLSADO al iniciar el pago es incumplimiento, no confirma")
+    void conEstadoImposibleAlIniciarNoConfirma() {
+        Pedido pedido = borradorConItem(2);
+        given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(pedido));
+        dadoClienteActivo();
+        given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoVendible(PRODUCTO)));
+        given(pagosClient.iniciarPago(any(SolicitudPagoDto.class)))
+                .willReturn(pago(EstadoPago.REEMBOLSADO, TOTAL));
+
+        Throwable error = catchThrowable(() -> service.confirmarPedido(PEDIDO_ID, CLIENTE, REQUEST));
+
+        assertThat(codigoDe(error)).isEqualTo(CodigoError.DEPENDENCY_UNAVAILABLE);
+        assertThat(pedido.getEstado()).isEqualTo(EstadoPedido.BORRADOR);
+        assertThat(pedido.getPagoId()).isNull();
     }
 
     @Test
@@ -111,7 +156,7 @@ class ConfirmarPedidoServiceTest extends PedidoServiceTestBase {
         given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(pedido));
         dadoClienteActivo();
         given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoVendible(PRODUCTO)));
-        given(pagosClient.cobrar(any(SolicitudPagoDto.class)))
+        given(pagosClient.iniciarPago(any(SolicitudPagoDto.class)))
                 .willReturn(pago(EstadoPago.RECHAZADO, TOTAL));
         // El rechazo se asienta en una transaccion propia, que vuelve a leer el pedido.
         given(pedidoRepository.findById(PEDIDO_ID)).willReturn(Optional.of(pedido));
@@ -139,7 +184,7 @@ class ConfirmarPedidoServiceTest extends PedidoServiceTestBase {
         dadoClienteActivo();
         given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoVendible(PRODUCTO)));
         // El contrato con Eq. 4 dice que el cobro se resuelve en la misma llamada.
-        given(pagosClient.cobrar(any(SolicitudPagoDto.class)))
+        given(pagosClient.iniciarPago(any(SolicitudPagoDto.class)))
                 .willReturn(pago(EstadoPago.REEMBOLSADO, TOTAL));
 
         Throwable error = catchThrowable(() -> service.confirmarPedido(PEDIDO_ID, CLIENTE, REQUEST));
@@ -156,7 +201,7 @@ class ConfirmarPedidoServiceTest extends PedidoServiceTestBase {
         given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(pedido));
         dadoClienteActivo();
         given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoVendible(PRODUCTO)));
-        given(pagosClient.cobrar(any(SolicitudPagoDto.class)))
+        given(pagosClient.iniciarPago(any(SolicitudPagoDto.class)))
                 .willThrow(new DependenciaNoDisponibleException("Pagos", new RuntimeException("timeout")));
 
         Throwable error = catchThrowable(() -> service.confirmarPedido(PEDIDO_ID, CLIENTE, REQUEST));

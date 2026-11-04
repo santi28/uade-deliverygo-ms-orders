@@ -22,7 +22,7 @@ public record CrearPedidoRequest(
         @Schema(description = "Comercio del pedido; todas sus lineas deben ser de este comercio (RN-02)",
                 example = "99999999-9999-9999-9999-999999999999", requiredMode = Schema.RequiredMode.REQUIRED)
         @NotNull(message = "comercioId es obligatorio")
-        UUID comercioId,
+        Long comercioId,
 
         @Schema(description = "Direccion de entrega; tiene que ser una de las del cliente (RN-06)",
                 example = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", requiredMode = Schema.RequiredMode.REQUIRED)

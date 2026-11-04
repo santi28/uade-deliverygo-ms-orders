@@ -21,7 +21,7 @@ INSERT INTO pedidos (id, cliente_id, comercio_id, direccion_entrega_id, estado, 
                      pago_id, fecha_creacion, fecha_actualizacion, version)
 SELECT 'dddd0001-0000-4000-8000-000000000001',
        '11111111-1111-1111-1111-111111111111',
-       '99999999-9999-9999-9999-999999999999',
+       10,
        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
        'CONFIRMADO',
        20600.00,
@@ -38,7 +38,7 @@ INSERT INTO pedidos (id, cliente_id, comercio_id, direccion_entrega_id, estado, 
                      pago_id, fecha_creacion, fecha_actualizacion, version)
 SELECT 'dddd0002-0000-4000-8000-000000000002',
        '11111111-1111-1111-1111-111111111111',
-       '99999999-9999-9999-9999-999999999999',
+       10,
        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
        'CANCELADO',
        8500.00,
@@ -53,7 +53,7 @@ WHERE NOT EXISTS (SELECT 1 FROM pedidos WHERE id = 'dddd0002-0000-4000-8000-0000
 INSERT INTO items_pedido (id, pedido_id, producto_id, nombre_producto, cantidad, precio_unitario)
 SELECT 'eeee0001-0000-4000-8000-000000000001',
        'dddd0001-0000-4000-8000-000000000001',
-       '33333333-3333-3333-3333-333333333333',
+       1,
        'Pizza muzzarella',
        2,
        8500.00
@@ -62,7 +62,7 @@ WHERE NOT EXISTS (SELECT 1 FROM items_pedido WHERE id = 'eeee0001-0000-4000-8000
 INSERT INTO items_pedido (id, pedido_id, producto_id, nombre_producto, cantidad, precio_unitario)
 SELECT 'eeee0002-0000-4000-8000-000000000002',
        'dddd0001-0000-4000-8000-000000000001',
-       '44444444-4444-4444-4444-444444444444',
+       2,
        'Empanada de carne',
        3,
        1200.00
@@ -72,7 +72,7 @@ WHERE NOT EXISTS (SELECT 1 FROM items_pedido WHERE id = 'eeee0002-0000-4000-8000
 INSERT INTO items_pedido (id, pedido_id, producto_id, nombre_producto, cantidad, precio_unitario)
 SELECT 'eeee0003-0000-4000-8000-000000000003',
        'dddd0002-0000-4000-8000-000000000002',
-       '33333333-3333-3333-3333-333333333333',
+       1,
        'Pizza muzzarella',
        1,
        8500.00

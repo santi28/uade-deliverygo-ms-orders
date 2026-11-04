@@ -44,7 +44,7 @@ public record AgregarItemsPedidoRequest(
                     example = "33333333-3333-3333-3333-333333333333",
                     requiredMode = Schema.RequiredMode.REQUIRED)
             @NotNull(message = "productoId es obligatorio")
-            UUID productoId,
+            Long productoId,
 
             @Schema(description = "Unidades de la linea; para quitarla se usa DELETE",
                     example = "2", minimum = "1", requiredMode = Schema.RequiredMode.REQUIRED)

@@ -6,6 +6,7 @@ import org.deliverygo.ordersms.client.UsuariosClient;
 import org.deliverygo.ordersms.client.dto.EstadoPago;
 import org.deliverygo.ordersms.client.dto.PagoDto;
 import org.deliverygo.ordersms.client.dto.ProductoDto;
+import org.deliverygo.ordersms.client.dto.ReembolsoDto;
 import org.deliverygo.ordersms.client.dto.SolicitudPagoDto;
 import org.deliverygo.ordersms.client.dto.UsuarioDto;
 import org.deliverygo.ordersms.dto.AgregarItemsPedidoRequest;
@@ -45,6 +46,9 @@ import java.util.UUID;
 public class PedidoService {
 
     private static final String MOTIVO_CREACION = "Pedido creado como borrador";
+
+    /** Prefijo de la clave de control de INT-03; hace idempotente el reintento de CU-03. */
+    private static final String CLAVE_CONTROL_PAGO = "pedido-";
 
     /** Informa si esta llamada creo el pedido o reutilizo un borrador existente. */
     public record ResultadoCreacionPedido(PedidoResponse pedido, boolean creado) {
@@ -163,7 +167,7 @@ public class PedidoService {
      * el congelado al agregar la linea (RN-03); si cambio, lo detecta CU-03.
      */
     @Transactional
-    public PedidoResponse modificarCantidadItem(UUID pedidoId, UUID clienteId, UUID productoId,
+    public PedidoResponse modificarCantidadItem(UUID pedidoId, UUID clienteId, Long productoId,
             ModificarCantidadItemRequest request) {
         Pedido pedido = buscarBorradorEditable(pedidoId, clienteId);
 
@@ -190,7 +194,7 @@ public class PedidoService {
      * que poder sacar del borrador.
      */
     @Transactional
-    public PedidoResponse quitarItem(UUID pedidoId, UUID clienteId, UUID productoId) {
+    public PedidoResponse quitarItem(UUID pedidoId, UUID clienteId, Long productoId) {
         Pedido pedido = buscarBorradorEditable(pedidoId, clienteId);
 
         pedido.buscarItem(productoId).ifPresent(item -> {
@@ -241,30 +245,44 @@ public class PedidoService {
         revalidarLineasContraCatalogo(pedido);
 
         // INT-03: si Pagos no responde, la excepcion sale sin tocar el estado del pedido.
-        PagoDto pago = pagosClient.cobrar(new SolicitudPagoDto(
+        // El medio de pago va nulo: el cliente HTTP pone el codigo registrado en Pagos
+        // mientras DTO-04 reciba el medio como texto (desvio registrado en PLAN.md).
+        PagoDto pago = pagosClient.iniciarPago(new SolicitudPagoDto(
                 pedido.getId(),
                 clienteId,
+                null,
                 pedido.getTotal(),
                 pedido.getMoneda(),
-                request.medioPago()));
+                CLAVE_CONTROL_PAGO + pedido.getId()));
 
-        if (pago.status() == EstadoPago.RECHAZADO) {
+        if (pago.estado() == EstadoPago.RECHAZADO) {
             // DM-07: el rechazo queda en el historial aunque el CU responda 422. Va en una
             // transaccion aparte porque la del CU se deshace al lanzar la excepcion.
-            registrarPagoRechazado(pedidoId, pago.paymentId());
+            registrarPagoRechazado(pedidoId, pago.codigoPago());
             throw new ReglaNegocioException(CodigoError.PAYMENT_REJECTED,
-                    "Pagos rechazo el cobro del pedido " + pedidoId + "; el pedido sigue en BORRADOR");
+                    "Pagos rechazo el pago del pedido " + pedidoId + "; el pedido sigue en BORRADOR");
         }
 
-        if (pago.status() != EstadoPago.APROBADO) {
-            // El contrato con Eq. 4 dice que el cobro se resuelve en la misma llamada: un
-            // estado distinto es un incumplimiento, no un rechazo, y no se confirma nada.
+        if (pago.estado() == EstadoPago.PENDIENTE) {
+            // Desvio registrado (03/11, PLAN.md): Pagos autoriza en una llamada aparte que
+            // no hacemos nosotros, asi que iniciar el pago no confirma el pedido. Queda en
+            // BORRADOR con el pago asociado y la transicion a CONFIRMADO pasa a depender de
+            // que Pagos nos avise (CU-09). El intento queda en el historial.
+            pedido.asociarPago(pago.codigoPago());
+            maquinaEstados.transicionar(pedido, EstadoPedido.BORRADOR,
+                    "CU-03: pago " + pago.codigoPago() + " iniciado, PENDIENTE de autorizacion");
+            return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+        }
+
+        if (pago.estado() != EstadoPago.APROBADO) {
+            // REEMBOLSADO al iniciar un pago es un incumplimiento de contrato, no un
+            // rechazo: no se confirma nada.
             throw new ReglaNegocioException(CodigoError.DEPENDENCY_UNAVAILABLE,
-                    "Pagos respondio un estado inesperado al cobrar: " + pago.status());
+                    "Pagos respondio un estado inesperado al iniciar el pago: " + pago.estado());
         }
 
-        pedido.asociarPago(pago.paymentId());
-        maquinaEstados.transicionar(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.paymentId());
+        pedido.asociarPago(pago.codigoPago());
+        maquinaEstados.transicionar(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.codigoPago());
 
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
     }
@@ -299,11 +317,15 @@ public class PedidoService {
             }
 
             // INT-04: si no responde, la excepcion sale sin cambiar el estado del pedido.
-            PagoDto reembolso = pagosClient.reembolsar(pedido.getPagoId(), pedido.getId());
+            // Se reembolsa el total: Pedidos no hace reembolsos parciales.
+            ReembolsoDto reembolso = pagosClient.reembolsar(
+                    pedido.getPagoId(), pedido.getId(), pedido.getTotal());
 
-            if (reembolso.status() != EstadoPago.REEMBOLSADO) {
+            // Ojo: el estado que mira es el del reembolso, no el del pago. Pagos informa
+            // APROBADO cuando lo concede.
+            if (!reembolso.aprobado()) {
                 throw new ReglaNegocioException(CodigoError.PAYMENT_REJECTED,
-                        "Pagos no reembolso el pedido " + pedidoId + " (respondio " + reembolso.status()
+                        "Pagos no reembolso el pedido " + pedidoId + " (respondio " + reembolso.estado()
                                 + "); el pedido sigue CONFIRMADO");
             }
 
@@ -439,7 +461,7 @@ public class PedidoService {
      * pedido: que exista, que sea del mismo comercio (RN-02) y que este disponible
      * (RN-05).
      */
-    private ProductoDto buscarProductoVendible(Pedido pedido, UUID productoId) {
+    private ProductoDto buscarProductoVendible(Pedido pedido, Long productoId) {
         ProductoDto producto = catalogoClient.buscarProducto(productoId)
                 .orElseThrow(() -> new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
                         "El producto " + productoId + " no existe en Catalogo"));
@@ -465,7 +487,7 @@ public class PedidoService {
      * orden de la lista, asi que se rechaza con VALIDATION_ERROR.
      */
     private void validarProductosSinRepetir(List<AgregarItemsPedidoRequest.LineaItem> lineas) {
-        Set<UUID> vistos = new HashSet<>();
+        Set<Long> vistos = new HashSet<>();
         for (AgregarItemsPedidoRequest.LineaItem linea : lineas) {
             if (!vistos.add(linea.productoId())) {
                 throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,

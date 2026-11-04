@@ -106,7 +106,7 @@ public class PedidoController {
                             description = "Cliente activo y direccion suya, segun los datos de los mocks",
                             value = """
                                     {
-                                      "comercioId": "99999999-9999-9999-9999-999999999999",
+                                      "comercioId": 10,
                                       "direccionEntregaId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
                                     }""")))
             @Valid @RequestBody CrearPedidoRequest request,
@@ -185,9 +185,9 @@ public class PedidoController {
                                     value = """
                                             {
                                               "items": [
-                                                { "productoId": "33333333-3333-3333-3333-333333333333", \
+                                                { "productoId": 1, \
                                 "cantidad": 2 },
-                                                { "productoId": "44444444-4444-4444-4444-444444444444", \
+                                                { "productoId": 2, \
                                 "cantidad": 3 }
                                               ]
                                             }"""),
@@ -196,7 +196,7 @@ public class PedidoController {
                                     value = """
                                             {
                                               "items": [
-                                                { "productoId": "55555555-5555-5555-5555-555555555555", \
+                                                { "productoId": 3, \
                                 "cantidad": 1 }
                                               ]
                                             }"""),
@@ -205,7 +205,7 @@ public class PedidoController {
                                     value = """
                                             {
                                               "items": [
-                                                { "productoId": "66666666-6666-6666-6666-666666666666", \
+                                                { "productoId": 4, \
                                 "cantidad": 1 }
                                               ]
                                             }"""),
@@ -214,7 +214,7 @@ public class PedidoController {
                                     value = """
                                             {
                                               "items": [
-                                                { "productoId": "33333333-3333-3333-3333-333333333333", \
+                                                { "productoId": 1, \
                                 "cantidad": 0 }
                                               ]
                                             }""") }))
@@ -274,7 +274,7 @@ public class PedidoController {
             @Parameter(description = "Identificador del pedido") UUID id,
             @PathVariable
             @Parameter(description = "Producto de la linea a modificar",
-                    example = "33333333-3333-3333-3333-333333333333") UUID productoId,
+                    example = "1") Long productoId,
             @RequestHeader(HEADER_CLIENTE)
             @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
             UUID clienteId,
@@ -332,7 +332,7 @@ public class PedidoController {
             @Parameter(description = "Identificador del pedido") UUID id,
             @PathVariable
             @Parameter(description = "Producto de la linea a sacar",
-                    example = "44444444-4444-4444-4444-444444444444") UUID productoId,
+                    example = "2") Long productoId,
             @RequestHeader(HEADER_CLIENTE)
             @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
             UUID clienteId) {

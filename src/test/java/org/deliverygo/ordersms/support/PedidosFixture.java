@@ -3,6 +3,7 @@ package org.deliverygo.ordersms.support;
 import org.deliverygo.ordersms.client.dto.EstadoPago;
 import org.deliverygo.ordersms.client.dto.PagoDto;
 import org.deliverygo.ordersms.client.dto.ProductoDto;
+import org.deliverygo.ordersms.client.dto.ReembolsoDto;
 import org.deliverygo.ordersms.client.dto.UsuarioDto;
 import org.deliverygo.ordersms.client.mock.DatosMock;
 import org.deliverygo.ordersms.model.EstadoPedido;
@@ -28,13 +29,17 @@ public final class PedidosFixture {
     public static final UUID CLIENTE = DatosMock.CLIENTE_ACTIVO;
     public static final UUID DIRECCION = DatosMock.DIRECCION_CLIENTE_ACTIVO;
     public static final UUID OTRA_DIRECCION = DatosMock.DIRECCION_CLIENTE_INACTIVO;
-    public static final UUID COMERCIO = DatosMock.COMERCIO_PIZZERIA;
-    public static final UUID OTRO_COMERCIO = DatosMock.COMERCIO_KIOSCO;
-    public static final UUID PRODUCTO = DatosMock.PRODUCTO_PIZZA;
-    public static final UUID OTRO_PRODUCTO = DatosMock.PRODUCTO_EMPANADA;
+    public static final Long COMERCIO = DatosMock.COMERCIO_PIZZERIA;
+    public static final Long OTRO_COMERCIO = DatosMock.COMERCIO_KIOSCO;
+    public static final Long PRODUCTO = DatosMock.PRODUCTO_PIZZA;
+    public static final Long OTRO_PRODUCTO = DatosMock.PRODUCTO_EMPANADA;
     public static final BigDecimal PRECIO = new BigDecimal("8500.00");
     /** Pago que INT-03 devuelve al cobrar y que INT-04 reembolsa. */
     public static final UUID PAGO_ID = UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd");
+    /** Reembolso que INT-04 devuelve en CU-04. */
+    public static final UUID REEMBOLSO_ID = UUID.fromString("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee");
+    /** Estado de publicacion con el que Catalogo marca un producto vigente. */
+    public static final String ESTADO_ACTIVO = "ACTIVO";
 
     private PedidosFixture() {
     }
@@ -78,18 +83,18 @@ public final class PedidosFixture {
     }
 
     /** Producto de Catalogo (INT-01) del comercio del pedido. */
-    public static ProductoDto producto(UUID id, BigDecimal precio, boolean disponible) {
-        return new ProductoDto(id, COMERCIO, "Pizza muzzarella", precio, disponible);
+    public static ProductoDto producto(Long id, BigDecimal precio, boolean disponible) {
+        return new ProductoDto(id, COMERCIO, "Pizza muzzarella", precio, ESTADO_ACTIVO, disponible);
     }
 
     /** Producto vendible: del comercio del pedido, disponible y al precio congelado. */
-    public static ProductoDto productoVendible(UUID id) {
+    public static ProductoDto productoVendible(Long id) {
         return producto(id, PRECIO, true);
     }
 
     /** RN-02 — Producto que Catalogo ubica en otro comercio (MIXED_MERCHANT). */
-    public static ProductoDto productoDeOtroComercio(UUID id) {
-        return new ProductoDto(id, OTRO_COMERCIO, "Gaseosa", PRECIO, true);
+    public static ProductoDto productoDeOtroComercio(Long id) {
+        return new ProductoDto(id, OTRO_COMERCIO, "Gaseosa", PRECIO, ESTADO_ACTIVO, true);
     }
 
     /** RN-01, RN-06 — Usuario activo con {@link #DIRECCION} registrada (INT-02). */
@@ -107,8 +112,18 @@ public final class PedidosFixture {
         return new UsuarioDto(CLIENTE, "Cliente activo", true, List.of(OTRA_DIRECCION));
     }
 
-    /** INT-03 — Respuesta de Pagos al cobrar. */
+    /** INT-03 — Respuesta de Pagos al iniciar o consultar el pago. */
     public static PagoDto pago(EstadoPago estado, BigDecimal importe) {
-        return new PagoDto(PAGO_ID, estado, importe);
+        return new PagoDto(PAGO_ID, PEDIDO_ID, estado, importe, Pedido.MONEDA_POR_DEFECTO);
+    }
+
+    /** INT-04 — Reembolso concedido por Pagos; es lo que habilita CANCELADO en CU-04. */
+    public static ReembolsoDto reembolsoAprobado(BigDecimal importe) {
+        return new ReembolsoDto(REEMBOLSO_ID, PAGO_ID, importe, "APROBADO", BigDecimal.ZERO);
+    }
+
+    /** INT-04 — Reembolso que Pagos no concede; el pedido sigue CONFIRMADO. */
+    public static ReembolsoDto reembolsoRechazado(BigDecimal importe) {
+        return new ReembolsoDto(REEMBOLSO_ID, PAGO_ID, importe, "RECHAZADO", importe);
     }
 }

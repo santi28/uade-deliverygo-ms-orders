@@ -3,11 +3,14 @@ package org.deliverygo.ordersms.client.mock;
 import java.util.UUID;
 
 /**
- * Identificadores fijos que usan los mocks de INT-01..INT-04 mientras los modulos reales
- * no esten disponibles (Etapa 4).
+ * Identificadores fijos que usan los mocks de INT-01..INT-04 mientras los modulos
+ * reales no esten disponibles (Etapa 4).
  *
  * <p>Son deterministas a proposito: permiten reproducir desde Swagger tanto el camino
  * feliz como cada error de negocio.
+ *
+ * <p>Los ids de producto y comercio son numericos porque asi los emite Catalogo
+ * (DM-03); los de cliente y direccion siguen siendo UUID porque son nuestros.
  */
 public final class DatosMock {
 
@@ -19,15 +22,18 @@ public final class DatosMock {
     public static final UUID CLIENTE_INACTIVO = UUID.fromString("22222222-2222-2222-2222-222222222222");
     public static final UUID DIRECCION_CLIENTE_INACTIVO = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
-    public static final UUID COMERCIO_PIZZERIA = UUID.fromString("99999999-9999-9999-9999-999999999999");
-    public static final UUID COMERCIO_KIOSCO = UUID.fromString("88888888-8888-8888-8888-888888888888");
+    public static final Long COMERCIO_PIZZERIA = 10L;
+    public static final Long COMERCIO_KIOSCO = 20L;
 
-    public static final UUID PRODUCTO_PIZZA = UUID.fromString("33333333-3333-3333-3333-333333333333");
-    public static final UUID PRODUCTO_EMPANADA = UUID.fromString("44444444-4444-4444-4444-444444444444");
+    public static final Long PRODUCTO_PIZZA = 1L;
+    public static final Long PRODUCTO_EMPANADA = 2L;
     /** Producto de otro comercio: sirve para probar RN-02 (MIXED_MERCHANT). */
-    public static final UUID PRODUCTO_GASEOSA = UUID.fromString("55555555-5555-5555-5555-555555555555");
+    public static final Long PRODUCTO_GASEOSA = 3L;
     /** Producto sin stock: sirve para probar RN-05 (PRODUCT_UNAVAILABLE). */
-    public static final UUID PRODUCTO_HELADO = UUID.fromString("66666666-6666-6666-6666-666666666666");
+    public static final Long PRODUCTO_HELADO = 4L;
+
+    /** Medio de pago registrado en Pagos que usa el mock de INT-03. */
+    public static final UUID MEDIO_PAGO = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc");
 
     private DatosMock() {
     }

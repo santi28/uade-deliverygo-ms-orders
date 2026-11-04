@@ -39,11 +39,11 @@ class PedidoControllerRegressionTest {
 
     private static final String PEDIDOS = "/api/v1/orders";
     private static final String CLIENTE_ID = "11111111-1111-1111-1111-111111111111";
-    private static final String PIZZA_ID = "33333333-3333-3333-3333-333333333333";
-    private static final String EMPANADA_ID = "44444444-4444-4444-4444-444444444444";
+    private static final String PIZZA_ID = "1";
+    private static final String EMPANADA_ID = "2";
     private static final String CREAR_PEDIDO = """
             {
-              "comercioId": "99999999-9999-9999-9999-999999999999",
+              "comercioId": 10,
               "direccionEntregaId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
             }
             """;
@@ -127,7 +127,7 @@ class PedidoControllerRegressionTest {
         rechazarItems(pedidoId, """
                 {
                   "items": [
-                    {"productoId": "33333333-3333-3333-3333-333333333333", "cantidad": 2},
+                    {"productoId": 1, "cantidad": 2},
                     null
                   ]
                 }
@@ -143,8 +143,8 @@ class PedidoControllerRegressionTest {
         JsonNode actualizado = agregarItems(pedidoId, """
                 {
                   "items": [
-                    {"productoId": "33333333-3333-3333-3333-333333333333", "cantidad": 2},
-                    {"productoId": "44444444-4444-4444-4444-444444444444", "cantidad": 3}
+                    {"productoId": 1, "cantidad": 2},
+                    {"productoId": 2, "cantidad": 3}
                   ]
                 }
                 """);
@@ -188,7 +188,7 @@ class PedidoControllerRegressionTest {
     private JsonNode crearBorradorConEmpanada() throws Exception {
         UUID pedidoId = idDe(crearBorrador());
         agregarItems(pedidoId, """
-                {"items": [{"productoId": "44444444-4444-4444-4444-444444444444", "cantidad": 1}]}
+                {"items": [{"productoId": 2, "cantidad": 1}]}
                 """);
         return consultarPersistido(pedidoId);
     }

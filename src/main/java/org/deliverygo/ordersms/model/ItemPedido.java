@@ -39,7 +39,7 @@ public class ItemPedido {
     private Pedido pedido;
 
     @Column(name = "producto_id", nullable = false, updatable = false)
-    private UUID productoId;
+    private Long productoId;
 
     /** Snapshot del nombre del producto (DTO-02). */
     @Column(name = "nombre_producto", nullable = false)
@@ -56,7 +56,7 @@ public class ItemPedido {
     protected ItemPedido() {
     }
 
-    ItemPedido(Pedido pedido, UUID productoId, String nombreProducto, int cantidad, BigDecimal precioUnitario) {
+    ItemPedido(Pedido pedido, Long productoId, String nombreProducto, int cantidad, BigDecimal precioUnitario) {
         this.pedido = Objects.requireNonNull(pedido, "pedido es obligatorio");
         this.productoId = Objects.requireNonNull(productoId, "productoId es obligatorio");
         this.nombreProducto = Objects.requireNonNull(nombreProducto, "nombreProducto es obligatorio");
@@ -98,7 +98,7 @@ public class ItemPedido {
         return pedido;
     }
 
-    public UUID getProductoId() {
+    public Long getProductoId() {
         return productoId;
     }
 

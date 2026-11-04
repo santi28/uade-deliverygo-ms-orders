@@ -60,7 +60,7 @@ public class Pedido {
     private UUID clienteId;
 
     @Column(name = "comercio_id", nullable = false, updatable = false)
-    private UUID comercioId;
+    private Long comercioId;
 
     @Column(name = "direccion_entrega_id", nullable = false)
     private UUID direccionEntregaId;
@@ -103,7 +103,7 @@ public class Pedido {
     protected Pedido() {
     }
 
-    private Pedido(UUID clienteId, UUID comercioId, UUID direccionEntregaId) {
+    private Pedido(UUID clienteId, Long comercioId, UUID direccionEntregaId) {
         this.clienteId = Objects.requireNonNull(clienteId, "clienteId es obligatorio");
         this.comercioId = Objects.requireNonNull(comercioId, "comercioId es obligatorio");
         this.direccionEntregaId = Objects.requireNonNull(direccionEntregaId, "direccionEntregaId es obligatorio");
@@ -113,7 +113,7 @@ public class Pedido {
      * Crea un pedido nuevo en estado {@link EstadoPedido#BORRADOR}, sin items y con total
      * cero en la moneda por defecto.
      */
-    public static Pedido crear(UUID clienteId, UUID comercioId, UUID direccionEntregaId) {
+    public static Pedido crear(UUID clienteId, Long comercioId, UUID direccionEntregaId) {
         return new Pedido(clienteId, comercioId, direccionEntregaId);
     }
 
@@ -125,7 +125,7 @@ public class Pedido {
      * la restriccion de {@link ItemPedido}. Usar {@link #buscarItem(UUID)} antes si lo que
      * se quiere es acumular cantidad.
      */
-    public ItemPedido agregarItem(UUID productoId, String nombreProducto, int cantidad, BigDecimal precioUnitario) {
+    public ItemPedido agregarItem(Long productoId, String nombreProducto, int cantidad, BigDecimal precioUnitario) {
         ItemPedido item = new ItemPedido(this, productoId, nombreProducto, cantidad, precioUnitario);
         this.items.add(item);
         recalcularTotal();
@@ -144,7 +144,7 @@ public class Pedido {
         }
     }
 
-    public Optional<ItemPedido> buscarItem(UUID productoId) {
+    public Optional<ItemPedido> buscarItem(Long productoId) {
         return this.items.stream()
                 .filter(item -> Objects.equals(item.getProductoId(), productoId))
                 .findFirst();
@@ -204,7 +204,7 @@ public class Pedido {
         return clienteId;
     }
 
-    public UUID getComercioId() {
+    public Long getComercioId() {
         return comercioId;
     }
 

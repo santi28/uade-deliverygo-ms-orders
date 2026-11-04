@@ -253,15 +253,41 @@ Sin clases `@Nested`: surefire las descarta en una corrida normal (el nombre `..
 
 **Objetivo:** reemplazar mocks por los servicios de los otros equipos.
 
-- [ ] INT-01 Catálogo real
-- [ ] INT-02 Usuarios real (JWT incluido)
-- [ ] INT-03 / INT-04 Pagos real
+- [x] INT-01 Catálogo real — `CatalogoClientHttp`, escrito contra el OpenAPI del ecosistema; falta probarlo contra el servicio levantado
+- [ ] ~~INT-02 Usuarios real (JWT incluido)~~ — **no se puede**: el módulo no expone el recurso. Ver desvío abajo
+- [x] INT-03 / INT-04 Pagos real — `PagosClientHttp`; falta probarlo contra el servicio levantado
 - [ ] Registro de integraciones: URL, versión, responsable, evidencia de prueba exitosa
 - [ ] Declarar explícitamente lo que siga mockeado
 - [ ] (Opcional) CU-06 listar pedidos paginado y CU-10 solicitud a Logística
 - [ ] Revisar N+1 e índices en `clienteId` y `estado`
+- [ ] CU-09: endpoint para el aviso de Pagos, del que ahora depende pasar a CONFIRMADO
 
 **Salida:** flujo crear → agregar ítems → confirmar con pago real → cancelar con reembolso real.
+
+**Desvíos registrados — contratos reales del ecosistema (03/11)**
+
+Llegó el OpenAPI consolidado del ecosistema (`swagger-ecosistema.txt`, v1.4.0) con las APIs de los cinco módulos. Los contratos que esta planilla proponía para INT-01..04 eran suposiciones nuestras y varios no coinciden. Lo que se cambió en el código:
+
+| # | Qué asumíamos | Qué publica el ecosistema | Qué se hizo |
+| --- | --- | --- | --- |
+| 1 | `GET /api/v1/products/{id}` | `GET /api/v1/productos/{id}` | Ruta corregida en INT-01 |
+| 2 | `productoId` y `comercioId` UUID | `integer int64` | **Migrados a `Long`** en `Pedido`, `ItemPedido`, DTOs, controller, seed, tests y Postman. Catálogo es dueño de esos IDs, así que el tipo lo define quien los emite (DM-03) |
+| 3 | 404 = producto inexistente | 404 = inexistente **o inactivo** | `Optional.empty()` significa "no se puede pedir" |
+| 4 | Un campo `disponible` | `disponible` + `estado` | RN-05 pasa a ser la conjunción de los dos: `ProductoDto.vendible()` |
+| 5 | `POST /payments` resuelve el cobro | 201 **PENDIENTE** siempre; autoriza en `POST /{codigoPago}/approve`, que es un CU de ellos | Ver abajo |
+| 6 | `Idempotency-Key` en cabecera | `claveControl` en el cuerpo | `pedido-<pedidoId>` y `reembolso-<pedidoId>` |
+| 7 | `{orderId, userId, amount, currency, paymentMethod}` | `{codigoPedido, codigoUsuario, codigoMedioPago, monto, moneda, claveControl}` | DTOs de integración rehechos |
+| 8 | El reembolso devuelve el pago en REEMBOLSADO | devuelve un `ReembolsoResponse` con su propio `estado` (APROBADO) | CU-04 mira el estado **del reembolso**, no del pago |
+
+**Desvío de CU-03 — el pago es asincrónico.** Era el riesgo que esta planilla ya anotaba ("si Pagos devuelve PENDIENTE y aprueba aparte, CU-03 cambia y CU-09 pasa a ser necesario"). Pasó. Decisión del equipo (03/11): `confirmarPedido()` inicia el pago, guarda el `pagoId`, deja el pedido **en BORRADOR** y asienta el intento en el historial (`BORRADOR → BORRADOR`, igual que DM-07). Responde 200 con el pedido, no 422: no hubo error, el pago quedó en curso. Pasar a CONFIRMADO ahora depende de CU-09.
+
+Qué hay que corregir en la planilla: la ficha de CU-03, API-03, SEC-03, el diagrama de secuencia, INT-03, la máquina de estados (BORRADOR → CONFIRMADO deja de ser disparada por CU-03) y DM-07. **Hay que avisarle al docente**: el CU-03 que se entregó en la Etapa 2 ya no cierra el flujo por sí solo, y CU-09 pasa de evolución a obligatorio.
+
+**Desvío de INT-02 — Usuarios no expone el recurso.** El módulo publica solo `/auth/register`, `/auth/login` y `/auth/password/forgot`; no hay `GET /api/v1/users/{id}` y `UsuarioResponse` no trae direcciones. En todo el ecosistema no hay recurso de direcciones del usuario. Consecuencia: **RN-01 y RN-06 no se validan contra ningún módulo**. Decisión del equipo (03/11): no se usa JWT y se confía en que el usuario viene validado por su propio módulo. `UsuariosClientMock` queda activo en todos los perfiles (no se apaga con `integracion`) porque no hay implementación HTTP que lo reemplace, y está declarado como mock. Las tres integraciones reales que pide la consigna se cumplen con INT-01, INT-03 e INT-04.
+
+**Desvío de DTO-04 — falta el medio de pago.** Pagos exige un `codigoMedioPago` (UUID) que se registra antes con `POST /api/v1/payment-methods`, y `ConfirmarPedidoRequest.medioPago` es un texto (`"TARJETA_CREDITO"`). Hasta alinear DTO-04, el código sale de `deliverygo.integraciones.pagos.medio-pago-por-defecto` y el texto del request no se usa. Es lo más flojo de esta tanda: conviene que DTO-04 pase a recibir un `medioPagoId`.
+
+**Qué queda sin verificar.** Los dos clientes están probados con `MockRestServiceServer` contra el contrato publicado (16 tests), no contra los servicios corriendo. Hasta que alguien levante Catálogo y Pagos y se corra el flujo, los ítems de arriba no están cerrados y el registro de integraciones no tiene evidencia.
 
 ### Etapa 5 — Defensa técnica · hasta 17/11
 

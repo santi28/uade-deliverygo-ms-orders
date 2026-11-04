@@ -24,7 +24,7 @@ class PedidoRepositoryTest {
 
     private static final UUID CLIENTE = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final UUID OTRO_CLIENTE = UUID.fromString("99999999-9999-9999-9999-999999999999");
-    private static final UUID COMERCIO = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final Long COMERCIO = 22L;
     private static final UUID DIRECCION = UUID.fromString("33333333-3333-3333-3333-333333333333");
 
     @Autowired
@@ -74,8 +74,8 @@ class PedidoRepositoryTest {
     @DisplayName("REP-02: trae los items inicializados en la misma consulta (DM-02)")
     void traeItemsInicializados() {
         Pedido pedido = Pedido.crear(CLIENTE, COMERCIO, DIRECCION);
-        pedido.agregarItem(UUID.randomUUID(), "Milanesa napolitana", 2, new BigDecimal("1500.50"));
-        pedido.agregarItem(UUID.randomUUID(), "Coca-Cola 1.5L", 3, new BigDecimal("1200.00"));
+        pedido.agregarItem(101L, "Milanesa napolitana", 2, new BigDecimal("1500.50"));
+        pedido.agregarItem(102L, "Coca-Cola 1.5L", 3, new BigDecimal("1200.00"));
         UUID pedidoId = em.persistAndGetId(pedido, UUID.class);
         em.flush();
         em.clear();
@@ -97,7 +97,7 @@ class PedidoRepositoryTest {
     @DisplayName("REP-02: sin JOIN FETCH los items quedan perezosos")
     void findByIdDejaLosItemsPerezosos() {
         Pedido pedido = Pedido.crear(CLIENTE, COMERCIO, DIRECCION);
-        pedido.agregarItem(UUID.randomUUID(), "Empanada de carne", 6, new BigDecimal("800.00"));
+        pedido.agregarItem(103L, "Empanada de carne", 6, new BigDecimal("800.00"));
         UUID pedidoId = em.persistAndGetId(pedido, UUID.class);
         em.flush();
         em.clear();

@@ -31,7 +31,7 @@
             "description": "Abre un pedido en BORRADOR y guarda su id en la variable pedidoId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"comercioId\": \"{{comercioPizzeria}}\",\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
+              "raw": "{\n  \"comercioId\": {{comercioPizzeria}},\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -82,7 +82,7 @@
             "description": "Con un borrador abierto del mismo comercio no crea otro: devuelve el que ya estaba.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"comercioId\": \"{{comercioPizzeria}}\",\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
+              "raw": "{\n  \"comercioId\": {{comercioPizzeria}},\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -126,7 +126,7 @@
             "description": "El cliente ya tiene un borrador de la pizzeria: pedir uno del kiosco es MIXED_MERCHANT.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"comercioId\": \"{{comercioKiosco}}\",\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
+              "raw": "{\n  \"comercioId\": {{comercioKiosco}},\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -170,7 +170,7 @@
             "description": "Usuarios responde que el cliente no esta activo (INT-02).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"comercioId\": \"{{comercioPizzeria}}\",\n  \"direccionEntregaId\": \"{{direccionClienteInactivo}}\"\n}",
+              "raw": "{\n  \"comercioId\": {{comercioPizzeria}},\n  \"direccionEntregaId\": \"{{direccionClienteInactivo}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -214,7 +214,7 @@
             "description": "La direccion no esta entre las del cliente (INT-02).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"comercioId\": \"{{comercioPizzeria}}\",\n  \"direccionEntregaId\": \"{{direccionClienteInactivo}}\"\n}",
+              "raw": "{\n  \"comercioId\": {{comercioPizzeria}},\n  \"direccionEntregaId\": \"{{direccionClienteInactivo}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -307,7 +307,7 @@
             "description": "Agrega 2 pizzas y 3 empanadas: el total queda en 20600.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 2\n    },\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 3\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": {{productoPizza}},\n      \"cantidad\": 2\n    },\n    {\n      \"productoId\": {{productoEmpanada}},\n      \"cantidad\": 3\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -359,7 +359,7 @@
             "description": "El alta no acumula cantidad: para eso esta el PUT.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoPizza}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": {{productoPizza}},\n      \"cantidad\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -602,7 +602,7 @@
             "description": "La gaseosa es del kiosco y el pedido es de la pizzeria.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoGaseosa}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": {{productoGaseosa}},\n      \"cantidad\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -646,7 +646,7 @@
             "description": "Catalogo responde que el helado no esta disponible (INT-01).",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoHelado}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": {{productoHelado}},\n      \"cantidad\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -690,7 +690,7 @@
             "description": "Catalogo responde 404 para ese producto.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"77777777-7777-7777-7777-777777777777\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": 999,\n      \"cantidad\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -734,7 +734,7 @@
             "description": "Bean Validation sobre DTO-03: el alta exige cantidad mayor a cero.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoHelado}}\",\n      \"cantidad\": 0\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": {{productoHelado}},\n      \"cantidad\": 0\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -822,7 +822,7 @@
             "description": "Dos lineas del mismo producto dejarian el resultado a merced del orden de la lista.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 1\n    },\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 2\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": {{productoEmpanada}},\n      \"cantidad\": 1\n    },\n    {\n      \"productoId\": {{productoEmpanada}},\n      \"cantidad\": 2\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -866,7 +866,7 @@
             "description": "Un pedido ajeno responde igual que uno inexistente.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": {{productoEmpanada}},\n      \"cantidad\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1249,7 +1249,7 @@
             "description": "Los tres verbos de CU-02 quedan aca porque necesitan un pedido ya confirmado.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": \"{{productoEmpanada}}\",\n      \"cantidad\": 1\n    }\n  ]\n}",
+              "raw": "{\n  \"items\": [\n    {\n      \"productoId\": {{productoEmpanada}},\n      \"cantidad\": 1\n    }\n  ]\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1437,7 +1437,7 @@
             "description": "El pedido anterior ya no esta en BORRADOR, asi que el cliente puede abrir otro.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"comercioId\": \"{{comercioPizzeria}}\",\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
+              "raw": "{\n  \"comercioId\": {{comercioPizzeria}},\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -1692,30 +1692,30 @@
     },
     {
       "key": "comercioPizzeria",
-      "value": "99999999-9999-9999-9999-999999999999"
+      "value": "10"
     },
     {
       "key": "comercioKiosco",
-      "value": "88888888-8888-8888-8888-888888888888"
+      "value": "20"
     },
     {
       "key": "productoPizza",
-      "value": "33333333-3333-3333-3333-333333333333",
+      "value": "1",
       "description": "Pizza muzzarella, 8500"
     },
     {
       "key": "productoEmpanada",
-      "value": "44444444-4444-4444-4444-444444444444",
+      "value": "2",
       "description": "Empanada de carne, 1200"
     },
     {
       "key": "productoGaseosa",
-      "value": "55555555-5555-5555-5555-555555555555",
+      "value": "3",
       "description": "Gaseosa del kiosco; sirve para RN-02"
     },
     {
       "key": "productoHelado",
-      "value": "66666666-6666-6666-6666-666666666666",
+      "value": "4",
       "description": "Helado sin stock; sirve para RN-05"
     },
     {

@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PedidoPersistenceTest {
 
     private static final UUID CLIENTE_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
-    private static final UUID COMERCIO_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final Long COMERCIO_ID = 22L;
     private static final UUID DIRECCION_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
 
     @Autowired
@@ -47,8 +47,8 @@ class PedidoPersistenceTest {
     @DisplayName("REL-01: un pedido con dos items persiste por cascade y el total es correcto")
     void persisteItemsPorCascadeYCalculaTotal() {
         Pedido pedido = nuevoPedido();
-        pedido.agregarItem(UUID.randomUUID(), "Milanesa napolitana", 2, new BigDecimal("1500.50"));
-        pedido.agregarItem(UUID.randomUUID(), "Coca-Cola 1.5L", 3, new BigDecimal("1200.00"));
+        pedido.agregarItem(101L, "Milanesa napolitana", 2, new BigDecimal("1500.50"));
+        pedido.agregarItem(102L, "Coca-Cola 1.5L", 3, new BigDecimal("1200.00"));
 
         UUID pedidoId = em.persistAndGetId(pedido, UUID.class);
         em.flush();
@@ -70,8 +70,8 @@ class PedidoPersistenceTest {
     @DisplayName("REL-01: quitarItem + flush borra la fila (orphanRemoval)")
     void quitarItemBorraLaFila() {
         Pedido pedido = nuevoPedido();
-        pedido.agregarItem(UUID.randomUUID(), "Empanada de carne", 6, new BigDecimal("800.00"));
-        ItemPedido aQuitar = pedido.agregarItem(UUID.randomUUID(), "Flan", 1, new BigDecimal("2000.00"));
+        pedido.agregarItem(103L, "Empanada de carne", 6, new BigDecimal("800.00"));
+        ItemPedido aQuitar = pedido.agregarItem(104L, "Flan", 1, new BigDecimal("2000.00"));
 
         UUID pedidoId = em.persistAndGetId(pedido, UUID.class);
         em.flush();
@@ -131,7 +131,7 @@ class PedidoPersistenceTest {
     @Test
     @DisplayName("ENT-02: el mismo producto dos veces en un pedido viola la unique")
     void productoDuplicadoVialaLaUnique() {
-        UUID productoId = UUID.randomUUID();
+        Long productoId = 777L;
         Pedido pedido = nuevoPedido();
         pedido.agregarItem(productoId, "Pizza muzzarella", 1, new BigDecimal("9000.00"));
         pedido.agregarItem(productoId, "Pizza muzzarella", 2, new BigDecimal("9000.00"));

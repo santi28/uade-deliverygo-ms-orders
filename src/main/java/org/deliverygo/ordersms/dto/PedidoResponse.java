@@ -16,7 +16,7 @@ import java.util.UUID;
 public record PedidoResponse(
         UUID id,
         UUID clienteId,
-        UUID comercioId,
+        Long comercioId,
         UUID direccionEntregaId,
         EstadoPedido estado,
         BigDecimal total,
@@ -30,7 +30,7 @@ public record PedidoResponse(
     /** Linea del pedido con el precio congelado al agregarla (RN-03). */
     public record ItemResponse(
             UUID id,
-            UUID productoId,
+            Long productoId,
             String nombreProducto,
             int cantidad,
             BigDecimal precioUnitario,

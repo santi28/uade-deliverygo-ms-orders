@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.tuple;
 class HistorialEstadoRepositoryTest {
 
     private static final UUID CLIENTE = UUID.fromString("11111111-1111-1111-1111-111111111111");
-    private static final UUID COMERCIO = UUID.fromString("22222222-2222-2222-2222-222222222222");
+    private static final Long COMERCIO = 22L;
     private static final UUID DIRECCION = UUID.fromString("33333333-3333-3333-3333-333333333333");
 
     @Autowired

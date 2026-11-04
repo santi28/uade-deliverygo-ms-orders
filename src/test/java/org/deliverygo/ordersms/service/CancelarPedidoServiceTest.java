@@ -1,6 +1,7 @@
 package org.deliverygo.ordersms.service;
 
 import org.deliverygo.ordersms.client.dto.EstadoPago;
+import org.deliverygo.ordersms.client.dto.ReembolsoDto;
 import org.deliverygo.ordersms.dto.PedidoResponse;
 import org.deliverygo.ordersms.exception.CodigoError;
 import org.deliverygo.ordersms.exception.DependenciaNoDisponibleException;
@@ -17,10 +18,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.deliverygo.ordersms.support.PedidosFixture.CLIENTE;
 import static org.deliverygo.ordersms.support.PedidosFixture.PAGO_ID;
+import static org.deliverygo.ordersms.support.PedidosFixture.REEMBOLSO_ID;
 import static org.deliverygo.ordersms.support.PedidosFixture.PEDIDO_ID;
 import static org.deliverygo.ordersms.support.PedidosFixture.borradorConItem;
 import static org.deliverygo.ordersms.support.PedidosFixture.enEstado;
 import static org.deliverygo.ordersms.support.PedidosFixture.pago;
+import static org.deliverygo.ordersms.support.PedidosFixture.reembolsoAprobado;
+import static org.deliverygo.ordersms.support.PedidosFixture.reembolsoRechazado;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -59,8 +63,8 @@ class CancelarPedidoServiceTest extends PedidoServiceTestBase {
     void cancelaConfirmadoConReembolso() {
         Pedido pedido = enEstado(EstadoPedido.CONFIRMADO, PAGO_ID);
         given(pedidoRepository.findByIdAndClienteId(PEDIDO_ID, CLIENTE)).willReturn(Optional.of(pedido));
-        given(pagosClient.reembolsar(PAGO_ID, PEDIDO_ID))
-                .willReturn(pago(EstadoPago.REEMBOLSADO, pedido.getTotal()));
+        given(pagosClient.reembolsar(PAGO_ID, PEDIDO_ID, pedido.getTotal()))
+                .willReturn(reembolsoAprobado(pedido.getTotal()));
         dadoHistorialPersistido(pedido);
 
         PedidoResponse respuesta = service.cancelarPedido(PEDIDO_ID, CLIENTE);
@@ -72,7 +76,7 @@ class CancelarPedidoServiceTest extends PedidoServiceTestBase {
                     assertThat(entrada.estadoNuevo()).isEqualTo(EstadoPedido.CANCELADO);
                     assertThat(entrada.motivo()).isEqualTo("CU-04: cancelado con reembolso del pago " + PAGO_ID);
                 });
-        verify(pagosClient).reembolsar(PAGO_ID, PEDIDO_ID);
+        verify(pagosClient).reembolsar(PAGO_ID, PEDIDO_ID, pedido.getTotal());
     }
 
     @Test
@@ -80,8 +84,8 @@ class CancelarPedidoServiceTest extends PedidoServiceTestBase {
     void noCancelaSinReembolso() {
         Pedido pedido = enEstado(EstadoPedido.CONFIRMADO, PAGO_ID);
         given(pedidoRepository.findByIdAndClienteId(PEDIDO_ID, CLIENTE)).willReturn(Optional.of(pedido));
-        given(pagosClient.reembolsar(PAGO_ID, PEDIDO_ID))
-                .willReturn(pago(EstadoPago.RECHAZADO, pedido.getTotal()));
+        given(pagosClient.reembolsar(PAGO_ID, PEDIDO_ID, pedido.getTotal()))
+                .willReturn(reembolsoRechazado(pedido.getTotal()));
 
         Throwable error = catchThrowable(() -> service.cancelarPedido(PEDIDO_ID, CLIENTE));
 
@@ -95,12 +99,12 @@ class CancelarPedidoServiceTest extends PedidoServiceTestBase {
     void noCancelaConPagoTodaviaAprobado() {
         Pedido pedido = enEstado(EstadoPedido.CONFIRMADO, PAGO_ID);
         given(pedidoRepository.findByIdAndClienteId(PEDIDO_ID, CLIENTE)).willReturn(Optional.of(pedido));
-        given(pagosClient.reembolsar(PAGO_ID, PEDIDO_ID))
-                .willReturn(pago(EstadoPago.APROBADO, pedido.getTotal()));
+        given(pagosClient.reembolsar(PAGO_ID, PEDIDO_ID, pedido.getTotal()))
+                .willReturn(new ReembolsoDto(REEMBOLSO_ID, PAGO_ID, pedido.getTotal(), "PENDIENTE", pedido.getTotal()));
 
         Throwable error = catchThrowable(() -> service.cancelarPedido(PEDIDO_ID, CLIENTE));
 
-        // Solo REEMBOLSADO habilita pasar a CANCELADO.
+        // Solo un reembolso APROBADO habilita pasar a CANCELADO.
         assertThat(codigoDe(error)).isEqualTo(CodigoError.PAYMENT_REJECTED);
         assertThat(pedido.getEstado()).isEqualTo(EstadoPedido.CONFIRMADO);
     }
@@ -110,7 +114,7 @@ class CancelarPedidoServiceTest extends PedidoServiceTestBase {
     void propagaPagosCaido() {
         Pedido pedido = enEstado(EstadoPedido.CONFIRMADO, PAGO_ID);
         given(pedidoRepository.findByIdAndClienteId(PEDIDO_ID, CLIENTE)).willReturn(Optional.of(pedido));
-        given(pagosClient.reembolsar(PAGO_ID, PEDIDO_ID))
+        given(pagosClient.reembolsar(PAGO_ID, PEDIDO_ID, pedido.getTotal()))
                 .willThrow(new DependenciaNoDisponibleException("Pagos", new RuntimeException("timeout")));
 
         Throwable error = catchThrowable(() -> service.cancelarPedido(PEDIDO_ID, CLIENTE));

@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class MaquinaEstadosTest {
 
     private static final UUID CLIENTE = UUID.fromString("11111111-1111-1111-1111-111111111111");
-    private static final UUID COMERCIO = UUID.fromString("99999999-9999-9999-9999-999999999999");
+    private static final Long COMERCIO = 10L;
     private static final UUID DIRECCION = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
 
     private final MaquinaEstados maquinaEstados = new MaquinaEstados();
