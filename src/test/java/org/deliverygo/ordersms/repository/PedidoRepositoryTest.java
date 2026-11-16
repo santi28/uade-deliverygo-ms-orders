@@ -133,4 +133,27 @@ class PedidoRepositoryTest {
                 .getPersistenceUnitUtil()
                 .isLoaded(entidad, atributo);
     }
+    /** REP-06 — filtro, paginas disjuntas y conteo sin pedidos ajenos. */
+    @Test
+    void listaSoloClienteConPaginacion() {
+        var primero = persistir(CLIENTE, EstadoPedido.BORRADOR);
+        var segundo = persistir(CLIENTE, EstadoPedido.CONFIRMADO);
+        persistir(OTRO_CLIENTE, EstadoPedido.BORRADOR);
+        em.clear();
+        var orden = org.springframework.data.domain.Sort.by(
+                org.springframework.data.domain.Sort.Direction.DESC, "fechaCreacion", "id");
+        var p0 = pedidoRepository.findByClienteId(CLIENTE,
+                org.springframework.data.domain.PageRequest.of(0, 1, orden));
+        var p1 = pedidoRepository.findByClienteId(CLIENTE,
+                org.springframework.data.domain.PageRequest.of(1, 1, orden));
+        assertThat(p0.getTotalElements()).isEqualTo(2);
+        assertThat(p0.getTotalPages()).isEqualTo(2);
+        assertThat(p0.getContent()).extracting(Pedido::getClienteId).containsExactly(CLIENTE);
+        assertThat(p1.getContent()).extracting(Pedido::getClienteId).containsExactly(CLIENTE);
+        assertThat(java.util.Set.of(p0.getContent().getFirst().getId(), p1.getContent().getFirst().getId()))
+                .containsExactlyInAnyOrder(primero.getId(), segundo.getId());
+        assertThat(pedidoRepository.findByClienteId(UUID.randomUUID(),
+                org.springframework.data.domain.PageRequest.of(0, 20))).isEmpty();
+    }
+
 }

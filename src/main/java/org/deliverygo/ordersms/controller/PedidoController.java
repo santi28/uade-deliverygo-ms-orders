@@ -1,5 +1,8 @@
 package org.deliverygo.ordersms.controller;
 
+import org.deliverygo.ordersms.dto.PaginaPedidosResponse;
+import org.springframework.web.bind.annotation.RequestParam;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -501,5 +504,15 @@ public class PedidoController {
             @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
             UUID clienteId) {
         return pedidoService.consultarPedido(id, clienteId);
+    }
+    /** API-06 — CU-06: identidad provisional igual a los demas endpoints. */
+    @Operation(summary = "CU-06 — Listar pedidos del cliente",
+            description = "X-Cliente-Id es provisional; requiere autenticacion real antes de uso productivo.")
+    @GetMapping
+    public PaginaPedidosResponse listarPedidos(
+            @RequestHeader(HEADER_CLIENTE) UUID clienteId,
+            @RequestParam(defaultValue = "0") int pagina,
+            @RequestParam(defaultValue = "20") int tamanio) {
+        return pedidoService.listarPedidos(clienteId, pagina, tamanio);
     }
 }

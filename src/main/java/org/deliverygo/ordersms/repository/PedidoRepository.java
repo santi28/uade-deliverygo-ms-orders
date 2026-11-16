@@ -1,5 +1,8 @@
 package org.deliverygo.ordersms.repository;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 import org.deliverygo.ordersms.model.EstadoPedido;
 import org.deliverygo.ordersms.model.Pedido;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -16,6 +19,10 @@ import java.util.UUID;
  * existe {@code ItemPedidoRepository} ni REP-05.
  */
 public interface PedidoRepository extends JpaRepository<Pedido, UUID> {
+    /** REP-06 — CU-06: pagina exclusivamente los pedidos del cliente autenticado. */
+    Page<Pedido> findByClienteId(UUID clienteId,
+            Pageable pageable);
+
 
     /**
      * REP-01 — Busca el pedido de un cliente en un estado dado; se usa para recuperar el
