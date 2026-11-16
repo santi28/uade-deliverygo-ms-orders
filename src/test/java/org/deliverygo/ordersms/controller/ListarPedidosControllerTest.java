@@ -13,7 +13,7 @@ import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/** API-06 — contrato HTTP provisional, no prueba de autenticacion real. */
+/** API-06 — contrato HTTP del listado paginado. */
 @WebMvcTest(PedidoController.class)
 class ListarPedidosControllerTest {
     @Autowired MockMvc mvc;

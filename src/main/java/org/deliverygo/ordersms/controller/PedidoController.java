@@ -505,9 +505,8 @@ public class PedidoController {
             UUID clienteId) {
         return pedidoService.consultarPedido(id, clienteId);
     }
-    /** API-06 — CU-06: identidad provisional igual a los demas endpoints. */
-    @Operation(summary = "CU-06 — Listar pedidos del cliente",
-            description = "X-Cliente-Id es provisional; requiere autenticacion real antes de uso productivo.")
+    /** API-06 — CU-06: listado paginado de pedidos por cliente. */
+    @Operation(summary = "CU-06 — Listar pedidos del cliente")
     @GetMapping
     public PaginaPedidosResponse listarPedidos(
             @RequestHeader(HEADER_CLIENTE) UUID clienteId,

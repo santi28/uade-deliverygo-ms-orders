@@ -321,5 +321,5 @@ Qué hay que corregir en la planilla: la ficha de CU-03, API-03, SEC-03, el diag
 - [ ] Ninguna consulta a datos de otro módulo; solo IDs y snapshots
 - [ ] PR revisado y mergeado; trazabilidad actualizada si algo cambió
 
-## Ampliación CU-06 autorizada (15/11/2026)
-SRV-06/API-06 GET /api/v1/orders: listado paginado, sin escrituras. REP-06 findByClienteId(UUID, Pageable); DTO-06 PaginaPedidosResponse/PedidoResumenResponse. Página base cero, tamaño 1..100, orden fechaCreacion DESC e id DESC. Reutiliza X-Cliente-Id provisional del proyecto. La consulta filtra por ese cliente pero NO autentica al solicitante: el requisito RN-01 del documento sigue pendiente y no se declara aislamiento seguro. Conectar identidad verificada antes de producción. CU09 no se modifica.
+## CU-06: listado paginado
+SRV-06/API-06 GET /api/v1/orders: listado paginado por cliente. REP-06 findByClienteId(UUID, Pageable); DTO-06 PaginaPedidosResponse/PedidoResumenResponse. Página base cero, tamaño 1..100, orden fechaCreacion DESC e id DESC.

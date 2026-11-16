@@ -19,7 +19,7 @@ import java.util.UUID;
  * existe {@code ItemPedidoRepository} ni REP-05.
  */
 public interface PedidoRepository extends JpaRepository<Pedido, UUID> {
-    /** REP-06 — CU-06: pagina exclusivamente los pedidos del cliente autenticado. */
+    /** REP-06 — CU-06: pagina los pedidos del cliente indicado. */
     Page<Pedido> findByClienteId(UUID clienteId,
             Pageable pageable);
 

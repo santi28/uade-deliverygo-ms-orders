@@ -354,7 +354,7 @@ public class PedidoService {
     /** SRV-06 — CU-06: lectura paginada sin cargar items ni historial. */
     @Transactional(readOnly = true)
     public PaginaPedidosResponse listarPedidos(UUID clienteId, int pagina, int tamanio) {
-        Objects.requireNonNull(clienteId, "clienteId autenticado requerido");
+        Objects.requireNonNull(clienteId, "clienteId requerido");
         if (pagina < 0 || tamanio < 1 || tamanio > 100
                 || (long) pagina * tamanio > Integer.MAX_VALUE) {
             throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
