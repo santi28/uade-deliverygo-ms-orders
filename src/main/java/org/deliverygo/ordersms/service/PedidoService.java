@@ -351,17 +351,22 @@ public class PedidoService {
      * REP-04, aparte de los items, porque un unico JOIN FETCH de las dos colecciones
      * rompe con MultipleBagFetchException.
      */
-    /** SRV-06 — CU-06: lectura paginada sin cargar items ni historial. */
+    @Transactional(readOnly = true)
+    public PedidoResponse consultarPedido(UUID pedidoId, UUID clienteId) {
+        Pedido pedido = pedidoRepository.findByIdAndClienteId(pedidoId, clienteId)
+                .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
+        return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+    }
+
+/** SRV-06 — CU-06: lectura paginada sin cargar items ni historial. */
     @Transactional(readOnly = true)
     public PaginaPedidosResponse listarPedidos(UUID clienteId, int pagina, int tamanio) {
         Objects.requireNonNull(clienteId, "clienteId requerido");
-        if (pagina < 0 || tamanio < 1 || tamanio > 100
-                || (long) pagina * tamanio > Integer.MAX_VALUE) {
+        if (pagina < 0 || tamanio < 1 || tamanio > 100 || (long) pagina * tamanio > Integer.MAX_VALUE) {
             throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
                     "pagina debe ser >= 0, tamanio entre 1 y 100 y desplazamiento <= 2147483647");
         }
-        var orden = Sort.by(
-                Sort.Direction.DESC, "fechaCreacion", "id");
+        var orden = Sort.by("fechaCreacion", "id").descending();
         var resultado = pedidoRepository.findByClienteId(clienteId,
                 PageRequest.of(pagina, tamanio, orden));
         var resumenes = resultado.getContent().stream().map(p ->
@@ -370,14 +375,6 @@ public class PedidoService {
         return new PaginaPedidosResponse(resumenes, pagina, tamanio,
                 resultado.getTotalElements(), resultado.getTotalPages());
     }
-
-    @Transactional(readOnly = true)
-    public PedidoResponse consultarPedido(UUID pedidoId, UUID clienteId) {
-        Pedido pedido = pedidoRepository.findByIdAndClienteId(pedidoId, clienteId)
-                .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
-        return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
-    }
-
     /**
      * INT-02 — RN-01 y RN-06: el cliente existe y esta activo, y la direccion es una de
      * las suyas.
