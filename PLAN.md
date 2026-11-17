@@ -302,6 +302,19 @@ Qué hay que corregir en la planilla: la ficha de CU-03, API-03, SEC-03, el diag
 
 **Salida:** ensayo hecho sin cortes y sin depender de una sola persona.
 
+**Desvío registrado — endpoint `/status` fuera de la planilla (17/11)**
+
+Se agregó `GET /status`, que responde 200 con el cuerpo literal `OK` en `text/plain`. **No está en la planilla**: no es un CU ni un API-xx, así que no tiene ID de trazabilidad y queda declarado como agregado del equipo. Lo pide la operación, no el negocio: el healthcheck del contenedor `app` en `docker-compose.yml`, la demo y los otros módulos necesitan una forma de comprobar que el servicio responde.
+
+Decisiones:
+
+- Vive en `StatusController`, fuera de `/api/v1/orders`, así que no pide `X-Cliente-Id`.
+- Es un health **superficial**: no toca la base ni las integraciones. Un 200 significa solo que el proceso está levantado y sirviendo HTTP. Si mirara Postgres o Catálogo, una dependencia caída marcaría el contenedor como `unhealthy` y lo reiniciaría en vez de responder 503 por CU, que es lo que define el plan (DEPENDENCY_UNAVAILABLE).
+- Devuelve texto plano, no el `ErrorResponse` normalizado ni un JSON de estado: el contrato es el status 200 y el cuerpo `OK`.
+- No se usó `spring-boot-starter-actuator` para no agregar una dependencia ni exponer más endpoints de los necesarios para esto.
+
+Qué hay que corregir en la planilla: nada obligatorio, pero si se quiere que figure, va como endpoint de operación aparte de la tabla de CU. Mencionarlo en el README de la Etapa 5 junto con el healthcheck del compose.
+
 ---
 
 ## Forma de trabajo

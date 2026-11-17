@@ -32,6 +32,19 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-deliverygo_pedidos}
     ports:
       - "${SERVER_PORT:-8080}:8080"
+    healthcheck:
+      # GET /status devuelve 200 con el cuerpo "OK" cuando la app esta sirviendo HTTP.
+      # Es un health superficial a proposito: no mira la base ni las integraciones, asi
+      # una dependencia caida no marca el contenedor como unhealthy (eso se responde por
+      # CU con 503, DEPENDENCY_UNAVAILABLE). Se usa wget porque la imagen es alpine y no
+      # trae curl. El puerto es el interno (8080), no el publicado en el host.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/status || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      # La app tarda unos segundos en levantar: sin esto los primeros intentos fallarian
+      # y contarian como reintentos.
+      start_period: 40s
 
   postgres:
     image: postgres:16-alpine
