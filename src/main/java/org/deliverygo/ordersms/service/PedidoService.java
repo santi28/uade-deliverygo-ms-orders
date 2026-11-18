@@ -30,6 +30,7 @@ import org.deliverygo.ordersms.model.ItemPedido;
 import org.deliverygo.ordersms.model.Pedido;
 import org.deliverygo.ordersms.repository.HistorialEstadoRepository;
 import org.deliverygo.ordersms.repository.PedidoRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -59,6 +60,20 @@ public class PedidoService {
     /** Informa si esta llamada creo el pedido o reutilizo un borrador existente. */
     public record ResultadoCreacionPedido(PedidoResponse pedido, boolean creado) {
     }
+
+    /**
+     * Interruptor del desvio registrado en PLAN.md (17/11): con true, CU-03 confirma el
+     * pedido cualquiera sea su estado de origen, salteando RN-04.
+     *
+     * <p>Apagado por defecto: el flujo aprobado es el de la planilla. Solo afecta a CU-03;
+     * CU-02 y CU-04 siguen validando el estado. El pago sigue decidiendo el resultado
+     * (RECHAZADO 422, PENDIENTE deja el pedido como esta).
+     *
+     * <p>Inyectado por campo y no por el constructor a proposito: los tests construyen el
+     * service a mano y asi lo ven apagado sin tener que pasar un argumento mas.
+     */
+    @Value("${deliverygo.pedidos.confirmar-sin-validacion-estado:false}")
+    private boolean confirmarSinValidacionEstado;
 
     private final PedidoRepository pedidoRepository;
     private final HistorialEstadoRepository historialEstadoRepository;
@@ -237,8 +252,12 @@ public class PedidoService {
                 .filter(encontrado -> encontrado.getClienteId().equals(clienteId))
                 .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
 
-        // RN-04: solo se confirma un borrador. Se valida antes de cobrar.
-        maquinaEstados.validar(pedido.getEstado(), EstadoPedido.CONFIRMADO);
+        // RN-04: solo se confirma un borrador. Se valida antes de cobrar. Con el
+        // interruptor del desvio (17/11) prendido, este chequeo no corre y se confirma
+        // desde cualquier estado, CANCELADO incluido.
+        if (!confirmarSinValidacionEstado) {
+            maquinaEstados.validar(pedido.getEstado(), EstadoPedido.CONFIRMADO);
+        }
 
         if (pedido.getItems().isEmpty()) {
             throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
@@ -275,7 +294,7 @@ public class PedidoService {
             // BORRADOR con el pago asociado y la transicion a CONFIRMADO pasa a depender de
             // que Pagos nos avise (CU-09). El intento queda en el historial.
             pedido.asociarPago(pago.codigoPago());
-            maquinaEstados.transicionar(pedido, EstadoPedido.BORRADOR,
+            transicionarAlConfirmar(pedido, EstadoPedido.BORRADOR,
                     "CU-03: pago " + pago.codigoPago() + " iniciado, PENDIENTE de autorizacion");
             return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
         }
@@ -288,7 +307,7 @@ public class PedidoService {
         }
 
         pedido.asociarPago(pago.codigoPago());
-        maquinaEstados.transicionar(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.codigoPago());
+        transicionarAlConfirmar(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.codigoPago());
 
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
     }
@@ -442,10 +461,27 @@ public class PedidoService {
      * PAYMENT_REJECTED y se llevaria esta entrada con ella. Si no se puede asentar, el
      * CU responde igual 422: el rechazo del cobro es lo que el cliente tiene que ver.
      */
+    /**
+     * Aplica una transicion de CU-03 respetando el interruptor del desvio (17/11).
+     *
+     * <p>Con el interruptor apagado es exactamente
+     * {@link MaquinaEstados#transicionar(Pedido, EstadoPedido, String)}. Prendido saltea
+     * RN-04 tambien aca: si no, confirmar un CANCELADO pasaria el chequeo de la linea 241
+     * y despues reventaria al aplicar la transicion, y el interruptor no serviria de nada.
+     * El motivo que queda en el historial dice que se salteo la regla.
+     */
+    private HistorialEstado transicionarAlConfirmar(Pedido pedido, EstadoPedido nuevoEstado, String motivo) {
+        if (confirmarSinValidacionEstado && !maquinaEstados.esValida(pedido.getEstado(), nuevoEstado)) {
+            return maquinaEstados.transicionarSinValidar(pedido, nuevoEstado,
+                    motivo + " (RN-04 salteada: " + pedido.getEstado() + " a " + nuevoEstado + ")");
+        }
+        return maquinaEstados.transicionar(pedido, nuevoEstado, motivo);
+    }
+
     private void registrarPagoRechazado(UUID pedidoId, UUID paymentId) {
         transaccionIndependiente.executeWithoutResult(status ->
                 pedidoRepository.findById(pedidoId).ifPresent(pedido -> {
-                    maquinaEstados.transicionar(pedido, EstadoPedido.BORRADOR,
+                    transicionarAlConfirmar(pedido, EstadoPedido.BORRADOR,
                             "CU-03: pago RECHAZADO " + paymentId);
                     pedidoRepository.save(pedido);
                 }));

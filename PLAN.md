@@ -315,6 +315,21 @@ Decisiones:
 
 Qué hay que corregir en la planilla: nada obligatorio, pero si se quiere que figure, va como endpoint de operación aparte de la tabla de CU. Mencionarlo en el README de la Etapa 5 junto con el healthcheck del compose.
 
+**Desvio registrado — CU-03 puede saltear RN-04 con un interruptor (17/11)**
+
+A pedido del equipo, CU-03 puede confirmar un pedido **cualquiera sea su estado de origen**, salteando la validacion de RN-04. Esta detras de la property `deliverygo.pedidos.confirmar-sin-validacion-estado`, **apagada por defecto**: con el valor por defecto el flujo es exactamente el de la planilla y nada cambia.
+
+Alcance, acotado a proposito:
+
+- Saltea **solo el chequeo de estado** de CU-03. El pago sigue decidiendo el resultado: RECHAZADO responde 422, PENDIENTE deja el pedido como esta (desvio del 03/11) y solo APROBADO lo pasa a CONFIRMADO.
+- No saltea las otras validaciones de CU-03: pedido sin items, cliente y direccion (RN-01, RN-06) y la revalidacion contra Catalogo (RN-03, RN-05) siguen corriendo.
+- No toca CU-02 ni CU-04: siguen validando el estado como siempre.
+- La transicion queda en el `HistorialEstado` con el motivo marcado (`RN-04 salteada: <desde> a <hacia>`), asi que CU-05 muestra que la confirmacion no siguio la maquina de estados.
+
+Implementacion: `MaquinaEstados.transicionarSinValidar()` —que no valida nada y existe solo para esto— y `PedidoService.transicionarAlConfirmar()`, que elige entre ese metodo y el normal. El chequeo hay que saltearlo en los dos lugares: validar antes de cobrar y aplicar la transicion; si no, confirmar un CANCELADO pasaria el primero y reventaria en el segundo.
+
+Que hay que corregir en la planilla: nada mientras el interruptor este apagado. Si se decide dejarlo prendido, hay que rehacer la maquina de estados (RN-04 dejaria de ser una regla y pasaria a ser una recomendacion), la ficha de CU-03 y la tabla de errores, donde `ORDER_INVALID_STATE` ya no saldria nunca desde CU-03. **Hay que avisarle al docente** antes de prenderlo en una entrega o en la demo.
+
 ---
 
 ## Forma de trabajo
