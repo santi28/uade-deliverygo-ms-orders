@@ -13,7 +13,6 @@ import org.deliverygo.ordersms.model.Pedido;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -391,17 +390,6 @@ class ConfirmarPedidoServiceTest extends PedidoServiceTestBase {
 
         assertThat(error).isInstanceOf(PedidoNotFoundException.class);
         verifyNoInteractions(pagosClient);
-    }
-
-    /**
-     * Prende el interruptor del desvio del 17/11
-     * ({@code deliverygo.pedidos.confirmar-sin-validacion-estado}). Es un campo inyectado
-     * por @Value, asi que en un test unitario se setea por reflexion: el resto de los
-     * casos de esta clase corren con el apagado, que es el valor por defecto y el flujo
-     * aprobado en la planilla.
-     */
-    private void dadoElInterruptorDeRn04Prendido() {
-        ReflectionTestUtils.setField(service, "confirmarSinValidacionEstado", true);
     }
 
     @Test

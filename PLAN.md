@@ -315,20 +315,21 @@ Decisiones:
 
 Qué hay que corregir en la planilla: nada obligatorio, pero si se quiere que figure, va como endpoint de operación aparte de la tabla de CU. Mencionarlo en el README de la Etapa 5 junto con el healthcheck del compose.
 
-**Desvio registrado — CU-03 puede saltear RN-04 con un interruptor (17/11)**
+**Desvio registrado — RN-04 se puede apagar entera con un interruptor (17/11)**
 
-A pedido del equipo, CU-03 puede confirmar un pedido **cualquiera sea su estado de origen**, salteando la validacion de RN-04. Esta detras de la property `deliverygo.pedidos.confirmar-sin-validacion-estado`, **apagada por defecto**: con el valor por defecto el flujo es exactamente el de la planilla y nada cambia.
+A pedido del equipo, RN-04 puede dejar de aplicarse en **todos los CU**: CU-02 edita un pedido confirmado o cancelado, CU-03 confirma desde cualquier estado y CU-04 cancela desde cualquier estado, incluido uno ya CANCELADO. Esta detras de la property `deliverygo.pedidos.saltear-validacion-estado`, **apagada por defecto**: con el valor por defecto el flujo es exactamente el de la planilla y nada cambia.
 
-Alcance, acotado a proposito:
+Lo que el interruptor **no** saltea, porque no son reglas de estado:
 
-- Saltea **solo el chequeo de estado** de CU-03. El pago sigue decidiendo el resultado: RECHAZADO responde 422, PENDIENTE deja el pedido como esta (desvio del 03/11) y solo APROBADO lo pasa a CONFIRMADO.
-- No saltea las otras validaciones de CU-03: pedido sin items, cliente y direccion (RN-01, RN-06) y la revalidacion contra Catalogo (RN-03, RN-05) siguen corriendo.
-- No toca CU-02 ni CU-04: siguen validando el estado como siempre.
-- La transicion queda en el `HistorialEstado` con el motivo marcado (`RN-04 salteada: <desde> a <hacia>`), asi que CU-05 muestra que la confirmacion no siguio la maquina de estados.
+- El resultado del pago en CU-03: RECHAZADO responde 422, PENDIENTE deja el pedido como esta (desvio del 03/11) y solo APROBADO lo pasa a CONFIRMADO.
+- El reembolso en CU-04: un CONFIRMADO que no consigue el reembolso sigue sin cancelarse.
+- RN-01, RN-02, RN-03, RN-05 y RN-06, ni la validacion de pedido sin items.
 
-Implementacion: `MaquinaEstados.transicionarSinValidar()` —que no valida nada y existe solo para esto— y `PedidoService.transicionarAlConfirmar()`, que elige entre ese metodo y el normal. El chequeo hay que saltearlo en los dos lugares: validar antes de cobrar y aplicar la transicion; si no, confirmar un CANCELADO pasaria el primero y reventaria en el segundo.
+Toda transicion que la maquina de estados no permita queda asentada en el `HistorialEstado` con el motivo marcado (`RN-04 salteada: <desde> a <hacia>`), asi que CU-05 muestra cuales no siguieron la maquina.
 
-Que hay que corregir en la planilla: nada mientras el interruptor este apagado. Si se decide dejarlo prendido, hay que rehacer la maquina de estados (RN-04 dejaria de ser una regla y pasaria a ser una recomendacion), la ficha de CU-03 y la tabla de errores, donde `ORDER_INVALID_STATE` ya no saldria nunca desde CU-03. **Hay que avisarle al docente** antes de prenderlo en una entrega o en la demo.
+Implementacion: `MaquinaEstados.transicionarSinValidar()` —que no valida nada y existe solo para esto— y, en `PedidoService`, `validarEstado()` y `transicionar()`, los dos unicos puntos por los que los CU tocan la maquina de estados. Hay que saltear el chequeo en los dos: si solo se saltea la validacion previa, la operacion pasa el chequeo y despues revienta al aplicar la transicion, y el interruptor no sirve de nada.
+
+Que hay que corregir en la planilla: nada mientras el interruptor este apagado. Si se decide dejarlo prendido, RN-04 y la maquina de estados dejan de ser una regla y pasan a ser documentacion de lo que *deberia* pasar, y hay que rehacer las fichas de CU-02, CU-03 y CU-04 y la tabla de errores, donde `ORDER_INVALID_STATE` ya no saldria nunca. **Hay que avisarle al docente** antes de prenderlo en una entrega o en la demo.
 
 ---
 

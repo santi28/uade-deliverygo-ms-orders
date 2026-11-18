@@ -161,4 +161,40 @@ class CancelarPedidoServiceTest extends PedidoServiceTestBase {
         assertThat(error).isInstanceOf(PedidoNotFoundException.class);
         verifyNoInteractions(pagosClient);
     }
+
+    @Test
+    @DisplayName("desvio 17/11: con el interruptor prendido CU-04 cancela un pedido ya CANCELADO")
+    void conInterruptorPrendidoCancelaUnYaCancelado() {
+        dadoElInterruptorDeRn04Prendido();
+        Pedido pedido = enEstado(EstadoPedido.CANCELADO, null);
+        given(pedidoRepository.findByIdAndClienteId(PEDIDO_ID, CLIENTE)).willReturn(Optional.of(pedido));
+        dadoHistorialPersistido(pedido);
+
+        PedidoResponse respuesta = service.cancelarPedido(PEDIDO_ID, CLIENTE);
+
+        assertThat(respuesta.estado()).isEqualTo(EstadoPedido.CANCELADO);
+        // No era CONFIRMADO, asi que no hay reembolso que pedir.
+        verifyNoInteractions(pagosClient);
+        assertThat(respuesta.historial()).last()
+                .satisfies(entrada -> {
+                    assertThat(entrada.estadoAnterior()).isEqualTo(EstadoPedido.CANCELADO);
+                    assertThat(entrada.estadoNuevo()).isEqualTo(EstadoPedido.CANCELADO);
+                    assertThat(entrada.motivo()).contains("RN-04 salteada");
+                });
+    }
+
+    @Test
+    @DisplayName("desvio 17/11: el interruptor no saltea el reembolso; un CONFIRMADO sin reembolso no se cancela")
+    void elInterruptorNoSalteaElReembolso() {
+        dadoElInterruptorDeRn04Prendido();
+        Pedido pedido = enEstado(EstadoPedido.CONFIRMADO, PAGO_ID);
+        given(pedidoRepository.findByIdAndClienteId(PEDIDO_ID, CLIENTE)).willReturn(Optional.of(pedido));
+        given(pagosClient.reembolsar(PAGO_ID, PEDIDO_ID, pedido.getTotal()))
+                .willReturn(reembolsoRechazado(pedido.getTotal()));
+
+        Throwable error = catchThrowable(() -> service.cancelarPedido(PEDIDO_ID, CLIENTE));
+
+        assertThat(codigoDe(error)).isEqualTo(CodigoError.PAYMENT_REJECTED);
+        assertThat(pedido.getEstado()).isEqualTo(EstadoPedido.CONFIRMADO);
+    }
 }

@@ -396,4 +396,23 @@ class GestionarItemsServiceTest extends PedidoServiceTestBase {
 
         assertThat(error).isInstanceOf(PedidoNotFoundException.class);
     }
+
+    @Test
+    @DisplayName("desvio 17/11: con el interruptor prendido CU-02 edita un pedido CONFIRMADO")
+    void conInterruptorPrendidoEditaUnConfirmado() {
+        dadoElInterruptorDeRn04Prendido();
+        Pedido pedido = enEstado(EstadoPedido.CONFIRMADO, PAGO_ID);
+        given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(pedido));
+        given(catalogoClient.buscarProducto(OTRO_PRODUCTO))
+                .willReturn(Optional.of(productoVendible(OTRO_PRODUCTO)));
+        dadoHistorialPersistido(pedido);
+
+        PedidoResponse respuesta = service.agregarItems(PEDIDO_ID, CLIENTE, alta(new LineaItem(OTRO_PRODUCTO, 1)));
+
+        // El pedido sigue CONFIRMADO: la edicion no lo vuelve a BORRADOR, solo deja la
+        // entrada en el historial marcando que se salteo RN-04.
+        assertThat(respuesta.items()).hasSize(2);
+        assertThat(respuesta.historial()).last()
+                .satisfies(entrada -> assertThat(entrada.motivo()).contains("RN-04 salteada"));
+    }
 }

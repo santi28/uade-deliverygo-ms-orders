@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import java.util.List;
@@ -63,6 +64,19 @@ abstract class PedidoServiceTestBase {
     void prepararServicio() {
         service = new PedidoService(pedidoRepository, historialEstadoRepository, usuariosClient, catalogoClient,
                 pagosClient, maquinaEstados, new PedidoMapper(), transactionManager);
+    }
+
+    /**
+     * Prende el interruptor del desvio del 17/11
+     * ({@code deliverygo.pedidos.saltear-validacion-estado}), que apaga RN-04 en todos
+     * los CU.
+     *
+     * <p>Es un campo inyectado por @Value, asi que en un test unitario se setea por
+     * reflexion. Los casos que no lo llaman corren con el apagado, que es el valor por
+     * defecto y el flujo aprobado en la planilla.
+     */
+    protected void dadoElInterruptorDeRn04Prendido() {
+        ReflectionTestUtils.setField(service, "saltearValidacionEstado", true);
     }
 
     /** INT-02 — El cliente existe, esta activo y la direccion del pedido es suya. */
