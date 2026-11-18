@@ -65,4 +65,22 @@ public class MaquinaEstados {
         validar(pedido.getEstado(), nuevoEstado);
         return pedido.registrarTransicion(nuevoEstado, motivo);
     }
+
+    /**
+     * Aplica la transicion SIN validarla contra RN-04.
+     *
+     * <p>Desvio registrado en PLAN.md (17/11): existe solo para el interruptor
+     * {@code deliverygo.pedidos.confirmar-sin-validacion-estado}, que deja a CU-03
+     * confirmar un pedido cualquiera sea su estado de origen. Apagado (el valor por
+     * defecto) nadie lo llama y RN-04 sigue vigente.
+     *
+     * <p>No usarlo para nada mas: cualquier otro CU debe pasar por
+     * {@link #transicionar(Pedido, EstadoPedido, String)}.
+     *
+     * @param motivo queda asentado en el historial; deja constancia de que se salteo RN-04
+     * @return la entrada de historial registrada
+     */
+    public HistorialEstado transicionarSinValidar(Pedido pedido, EstadoPedido nuevoEstado, String motivo) {
+        return pedido.registrarTransicion(nuevoEstado, motivo);
+    }
 }

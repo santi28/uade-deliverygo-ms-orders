@@ -13,6 +13,7 @@ import org.deliverygo.ordersms.model.Pedido;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -390,5 +391,53 @@ class ConfirmarPedidoServiceTest extends PedidoServiceTestBase {
 
         assertThat(error).isInstanceOf(PedidoNotFoundException.class);
         verifyNoInteractions(pagosClient);
+    }
+
+    /**
+     * Prende el interruptor del desvio del 17/11
+     * ({@code deliverygo.pedidos.confirmar-sin-validacion-estado}). Es un campo inyectado
+     * por @Value, asi que en un test unitario se setea por reflexion: el resto de los
+     * casos de esta clase corren con el apagado, que es el valor por defecto y el flujo
+     * aprobado en la planilla.
+     */
+    private void dadoElInterruptorDeRn04Prendido() {
+        ReflectionTestUtils.setField(service, "confirmarSinValidacionEstado", true);
+    }
+
+    @Test
+    @DisplayName("desvio 17/11: con el interruptor prendido un CANCELADO se confirma y queda asentado en el historial")
+    void conInterruptorPrendidoConfirmaUnCancelado() {
+        dadoElInterruptorDeRn04Prendido();
+        Pedido pedido = enEstado(EstadoPedido.CANCELADO, null);
+        given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(pedido));
+        dadoClienteActivo();
+        given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoVendible(PRODUCTO)));
+        given(pagosClient.iniciarPago(any(SolicitudPagoDto.class)))
+                .willReturn(pago(EstadoPago.APROBADO, PRECIO));
+        dadoHistorialPersistido(pedido);
+
+        PedidoResponse respuesta = service.confirmarPedido(PEDIDO_ID, CLIENTE, REQUEST);
+
+        assertThat(respuesta.estado()).isEqualTo(EstadoPedido.CONFIRMADO);
+        assertThat(respuesta.pagoId()).isEqualTo(PAGO_ID);
+        // La transicion ilegal queda marcada: CU-05 muestra que no siguio la maquina de estados.
+        assertThat(respuesta.historial()).last()
+                .satisfies(entrada -> {
+                    assertThat(entrada.estadoAnterior()).isEqualTo(EstadoPedido.CANCELADO);
+                    assertThat(entrada.estadoNuevo()).isEqualTo(EstadoPedido.CONFIRMADO);
+                    assertThat(entrada.motivo()).contains("RN-04 salteada", "CANCELADO", "CONFIRMADO");
+                });
+    }
+
+    @Test
+    @DisplayName("desvio 17/11: el interruptor saltea solo RN-04; un pedido sin items sigue sin confirmarse")
+    void elInterruptorNoSalteaLasDemasValidaciones() {
+        dadoElInterruptorDeRn04Prendido();
+        given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(borrador()));
+
+        Throwable error = catchThrowable(() -> service.confirmarPedido(PEDIDO_ID, CLIENTE, REQUEST));
+
+        assertThat(codigoDe(error)).isEqualTo(CodigoError.VALIDATION_ERROR);
+        verifyNoInteractions(usuariosClient, catalogoClient, pagosClient);
     }
 }
