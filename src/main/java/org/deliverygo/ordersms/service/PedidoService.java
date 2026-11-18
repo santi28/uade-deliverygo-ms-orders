@@ -62,18 +62,21 @@ public class PedidoService {
     }
 
     /**
-     * Interruptor del desvio registrado en PLAN.md (17/11): con true, CU-03 confirma el
-     * pedido cualquiera sea su estado de origen, salteando RN-04.
+     * Interruptor del desvio registrado en PLAN.md (17/11): con true, RN-04 deja de
+     * aplicarse en TODOS los CU. CU-02 edita un pedido confirmado o cancelado, CU-03
+     * confirma desde cualquier estado y CU-04 cancela desde cualquier estado, incluido
+     * uno ya CANCELADO.
      *
-     * <p>Apagado por defecto: el flujo aprobado es el de la planilla. Solo afecta a CU-03;
-     * CU-02 y CU-04 siguen validando el estado. El pago sigue decidiendo el resultado
-     * (RECHAZADO 422, PENDIENTE deja el pedido como esta).
+     * <p>Apagado por defecto: el flujo aprobado es el de la planilla. Lo unico que no
+     * saltea son las reglas que no son de estado: el pago sigue decidiendo el resultado
+     * de CU-03 (RECHAZADO 422, PENDIENTE deja el pedido como esta), el reembolso sigue
+     * decidiendo el de CU-04, y RN-01, RN-02, RN-03, RN-05 y RN-06 siguen corriendo.
      *
      * <p>Inyectado por campo y no por el constructor a proposito: los tests construyen el
      * service a mano y asi lo ven apagado sin tener que pasar un argumento mas.
      */
-    @Value("${deliverygo.pedidos.confirmar-sin-validacion-estado:false}")
-    private boolean confirmarSinValidacionEstado;
+    @Value("${deliverygo.pedidos.saltear-validacion-estado:false}")
+    private boolean saltearValidacionEstado;
 
     private final PedidoRepository pedidoRepository;
     private final HistorialEstadoRepository historialEstadoRepository;
@@ -255,9 +258,7 @@ public class PedidoService {
         // RN-04: solo se confirma un borrador. Se valida antes de cobrar. Con el
         // interruptor del desvio (17/11) prendido, este chequeo no corre y se confirma
         // desde cualquier estado, CANCELADO incluido.
-        if (!confirmarSinValidacionEstado) {
-            maquinaEstados.validar(pedido.getEstado(), EstadoPedido.CONFIRMADO);
-        }
+        validarEstado(pedido.getEstado(), EstadoPedido.CONFIRMADO);
 
         if (pedido.getItems().isEmpty()) {
             throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
@@ -294,7 +295,7 @@ public class PedidoService {
             // BORRADOR con el pago asociado y la transicion a CONFIRMADO pasa a depender de
             // que Pagos nos avise (CU-09). El intento queda en el historial.
             pedido.asociarPago(pago.codigoPago());
-            transicionarAlConfirmar(pedido, EstadoPedido.BORRADOR,
+            transicionar(pedido, EstadoPedido.BORRADOR,
                     "CU-03: pago " + pago.codigoPago() + " iniciado, PENDIENTE de autorizacion");
             return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
         }
@@ -307,7 +308,7 @@ public class PedidoService {
         }
 
         pedido.asociarPago(pago.codigoPago());
-        transicionarAlConfirmar(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.codigoPago());
+        transicionar(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.codigoPago());
 
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
     }
@@ -328,8 +329,10 @@ public class PedidoService {
         Pedido pedido = pedidoRepository.findByIdAndClienteId(pedidoId, clienteId)
                 .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
 
-        // RN-04: estados cancelables. Se valida antes de pedir el reembolso.
-        maquinaEstados.validar(pedido.getEstado(), EstadoPedido.CANCELADO);
+        // RN-04: estados cancelables. Se valida antes de pedir el reembolso. Con el
+        // interruptor prendido se cancela desde cualquier estado, incluido uno ya
+        // CANCELADO; el reembolso de un CONFIRMADO sigue siendo obligatorio.
+        validarEstado(pedido.getEstado(), EstadoPedido.CANCELADO);
 
         String motivo = "CU-04: cancelado desde BORRADOR, sin reembolso";
 
@@ -357,7 +360,7 @@ public class PedidoService {
             motivo = "CU-04: cancelado con reembolso del pago " + pedido.getPagoId();
         }
 
-        maquinaEstados.transicionar(pedido, EstadoPedido.CANCELADO, motivo);
+        transicionar(pedido, EstadoPedido.CANCELADO, motivo);
 
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
     }
@@ -462,16 +465,30 @@ public class PedidoService {
      * CU responde igual 422: el rechazo del cobro es lo que el cliente tiene que ver.
      */
     /**
-     * Aplica una transicion de CU-03 respetando el interruptor del desvio (17/11).
+     * RN-04 — Valida la transicion salvo que el interruptor del desvio (17/11) este
+     * prendido, en cuyo caso no corta nada.
+     *
+     * <p>Es el unico punto por el que los CU validan el estado: asi prender el
+     * interruptor los alcanza a todos y no queda ninguno validando por su cuenta.
+     */
+    private void validarEstado(EstadoPedido desde, EstadoPedido hacia) {
+        if (!saltearValidacionEstado) {
+            maquinaEstados.validar(desde, hacia);
+        }
+    }
+
+    /**
+     * Aplica una transicion respetando el interruptor del desvio (17/11).
      *
      * <p>Con el interruptor apagado es exactamente
      * {@link MaquinaEstados#transicionar(Pedido, EstadoPedido, String)}. Prendido saltea
-     * RN-04 tambien aca: si no, confirmar un CANCELADO pasaria el chequeo de la linea 241
-     * y despues reventaria al aplicar la transicion, y el interruptor no serviria de nada.
-     * El motivo que queda en el historial dice que se salteo la regla.
+     * RN-04 tambien aca, y no solo en {@link #validarEstado}: si no, confirmar un
+     * CANCELADO pasaria la validacion previa y despues reventaria al aplicar la
+     * transicion, y el interruptor no serviria de nada. El motivo que queda en el
+     * historial dice que se salteo la regla.
      */
-    private HistorialEstado transicionarAlConfirmar(Pedido pedido, EstadoPedido nuevoEstado, String motivo) {
-        if (confirmarSinValidacionEstado && !maquinaEstados.esValida(pedido.getEstado(), nuevoEstado)) {
+    private HistorialEstado transicionar(Pedido pedido, EstadoPedido nuevoEstado, String motivo) {
+        if (saltearValidacionEstado && !maquinaEstados.esValida(pedido.getEstado(), nuevoEstado)) {
             return maquinaEstados.transicionarSinValidar(pedido, nuevoEstado,
                     motivo + " (RN-04 salteada: " + pedido.getEstado() + " a " + nuevoEstado + ")");
         }
@@ -481,7 +498,7 @@ public class PedidoService {
     private void registrarPagoRechazado(UUID pedidoId, UUID paymentId) {
         transaccionIndependiente.executeWithoutResult(status ->
                 pedidoRepository.findById(pedidoId).ifPresent(pedido -> {
-                    transicionarAlConfirmar(pedido, EstadoPedido.BORRADOR,
+                    transicionar(pedido, EstadoPedido.BORRADOR,
                             "CU-03: pago RECHAZADO " + paymentId);
                     pedidoRepository.save(pedido);
                 }));
@@ -501,8 +518,9 @@ public class PedidoService {
                 .filter(encontrado -> encontrado.getClienteId().equals(clienteId))
                 .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
 
-        // RN-04: un pedido ya confirmado o cancelado no se edita.
-        maquinaEstados.validar(pedido.getEstado(), EstadoPedido.BORRADOR);
+        // RN-04: un pedido ya confirmado o cancelado no se edita. Con el interruptor
+        // prendido se edita igual, cualquiera sea su estado.
+        validarEstado(pedido.getEstado(), EstadoPedido.BORRADOR);
 
         return pedido;
     }
@@ -512,7 +530,7 @@ public class PedidoService {
      * es lo que despues lee CU-05.
      */
     private void registrarEdicion(Pedido pedido, String motivo) {
-        maquinaEstados.transicionar(pedido, EstadoPedido.BORRADOR, motivo);
+        transicionar(pedido, EstadoPedido.BORRADOR, motivo);
     }
 
     /**
