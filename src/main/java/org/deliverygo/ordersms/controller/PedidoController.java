@@ -354,11 +354,14 @@ public class PedidoController {
                     cliente y la direccion (RN-01, RN-06, INT-02) y a Catalogo por la disponibilidad y \
                     el precio de cada linea (RN-05, RN-03, INT-01). Un pedido sin lineas no se confirma.
 
-                    Con el cobro APROBADO (INT-03) se guarda el pagoId y el pedido pasa a CONFIRMADO en \
-                    la misma transaccion. Con el cobro RECHAZADO el pedido sigue en BORRADOR, el intento \
-                    queda en el historial y la respuesta es 422.""")
+                    Inicia el pago en Pagos (INT-03) y guarda el pagoId. Pagos lo crea PENDIENTE y lo \
+                    autoriza aparte, asi que el pedido sigue en BORRADOR con el intento en el historial; \
+                    pasa a CONFIRMADO con CU-09 (POST /{id}/payment-result). Si Pagos lo aprobara en el \
+                    acto, se confirma en la misma transaccion. Con el cobro RECHAZADO el pedido sigue en \
+                    BORRADOR, el intento queda en el historial y la respuesta es 422.""")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Pedido confirmado y asociado al pago"),
+            @ApiResponse(responseCode = "200", description = "Pago iniciado (pedido en BORRADOR con pagoId) o,"
+                    + " si Pagos lo aprobo en el acto, pedido CONFIRMADO"),
             @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — falta el medio de pago, el pedido"
                     + " no tiene items, o el cliente o la direccion ya no son validos (RN-01, RN-06)",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE,

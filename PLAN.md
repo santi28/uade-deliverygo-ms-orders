@@ -378,7 +378,7 @@ Orden, por importancia: CU-09 (sin él ningún pedido llega a CONFIRMADO con Pag
 - [x] CU-08 registrar transición (SRV-08) — `registrarTransicion()` en `PedidoService`; CU-01 también pasa por ahí. `RegistrarTransicionServiceTest` (3)
 - [x] Corrección de RN-05: CU-02, CU-03 y CU-07 usaban solo `disponible()` y no `ProductoDto.vendible()` (desvío #4 del 03/11). Un producto INACTIVO pero disponible se podía pedir
 - [x] CU-10 asignación logística (SRV-10, API-10, INT-06) — con `LogisticaClientMock` declarado (activo en todos los perfiles, como el de Usuarios) hasta resolver el contrato. `SolicitarAsignacionLogisticaServiceTest` (7), API-10 en `PedidoControllerTest` y el flujo completo hasta EN_PREPARACION en `PedidoControllerRegressionTest`
-- [ ] Postman y Swagger con los CU nuevos
+- [x] Postman y Swagger con los CU nuevos — la colección pasa de 40 a 60 requests (CU-06, CU-07, CU-09, CU-10) y se corrió entera contra la app con el perfil `test`, dos veces sobre la misma base, sin fallas. Se corrigieron dos casos que estaban rotos desde antes: CU-03 esperaba CONFIRMADO (desde el 03/11 el pago queda PENDIENTE y confirma CU-09) y REP-01 esperaba 201 al reutilizar el borrador (responde 200). `doc/openapi.yaml` regenerado, con la portada de Swagger actualizada (CU-01 a CU-10, pago asincrónico, ids `Long` de Catálogo)
 - [ ] Planilla: fichas CU-06 a CU-10 con API/DTO, SEC-06 a SEC-10, matriz de trazabilidad
 
 **CU-06 — Listar pedidos.** SRV-06/API-06 `GET /api/v1/orders`: listado paginado por cliente. REP-06 `findByClienteId(UUID, Pageable)`; DTO-06 `PaginaPedidosResponse` / `PedidoResumenResponse`. Página base cero, tamaño 1..100, orden `fechaCreacion` DESC e `id` DESC. Sin pedidos: 200 con lista vacía. Parámetros fuera de rango: 400.
