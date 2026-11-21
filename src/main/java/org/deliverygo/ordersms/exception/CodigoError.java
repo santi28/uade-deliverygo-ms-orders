@@ -32,6 +32,9 @@ public enum CodigoError {
     /** Pagos rechazo la operacion (INT-03). */
     PAYMENT_REJECTED(HttpStatus.UNPROCESSABLE_ENTITY),
 
+    /** CU-09: el pago que informa Pagos no corresponde al pedido (INT-05). */
+    PAYMENT_MISMATCH(HttpStatus.UNPROCESSABLE_ENTITY),
+
     /** Catalogo, Usuarios o Pagos no responde (INT-01..04). */
     DEPENDENCY_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE),
 

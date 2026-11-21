@@ -5,10 +5,11 @@ import org.deliverygo.ordersms.client.dto.ReembolsoDto;
 import org.deliverygo.ordersms.client.dto.SolicitudPagoDto;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
- * INT-03 / INT-04 — Cliente de Pagos (Eq. 4).
+ * INT-03 / INT-04 / INT-05 — Cliente de Pagos (Eq. 4).
  *
  * <p>INT-03 {@code POST /api/v1/payments} en CU-03 e INT-04
  * {@code POST /api/v1/payments/{codigoPago}/refund} en CU-04. Las dos llamadas son
@@ -32,4 +33,12 @@ public interface PagosClient {
      * @param monto      total del pedido; Pedidos no hace reembolsos parciales
      */
     ReembolsoDto reembolsar(UUID codigoPago, UUID pedidoId, BigDecimal monto);
+
+    /**
+     * INT-05 — Consulta el pago en Pagos; CU-09 aplica lo que responde aca y no lo que
+     * diga el aviso que recibe.
+     *
+     * @return el pago, o vacio si Pagos no lo conoce (404)
+     */
+    Optional<PagoDto> consultarPago(UUID codigoPago);
 }

@@ -12,14 +12,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
- * INT-03 / INT-04 — Cliente HTTP de Pagos (Eq. 4).
+ * INT-03 / INT-04 / INT-05 — Cliente HTTP de Pagos (Eq. 4).
  *
  * <p>Reemplaza a {@code PagosClientMock} con el perfil {@code integracion}. INT-03
- * inicia el pago en CU-03 e INT-04 lo reembolsa en CU-04. Contrato tomado del OpenAPI
- * del ecosistema v1.4.0.
+ * inicia el pago en CU-03, INT-04 lo reembolsa en CU-04 e INT-05 lo consulta en CU-09.
+ * Contrato tomado del OpenAPI del ecosistema v1.4.0.
  *
  * <p>Las dos llamadas van con una clave de control derivada del pedido, que es el
  * mecanismo de idempotencia de Pagos: viaja en el cuerpo y no en una cabecera.
@@ -44,6 +45,9 @@ public class PagosClientHttp extends ClienteHttpDeModulo implements PagosClient 
 
     /** INT-04 — Reembolso de un pago. */
     static final String RUTA_REEMBOLSO = "/api/v1/payments/{codigoPago}/refund";
+
+    /** INT-05 — Consulta de un pago. */
+    static final String RUTA_CONSULTA = "/api/v1/payments/{codigoPago}";
 
     /** Prefijo de la clave de control del reembolso (INT-04). */
     static final String PREFIJO_REEMBOLSO = "reembolso-";
@@ -100,5 +104,13 @@ public class PagosClientHttp extends ClienteHttpDeModulo implements PagosClient 
                 .body(solicitud)
                 .retrieve()
                 .body(ReembolsoDto.class));
+    }
+
+    @Override
+    public Optional<PagoDto> consultarPago(UUID codigoPago) {
+        return buscar(() -> rest.get()
+                .uri(RUTA_CONSULTA, codigoPago)
+                .retrieve()
+                .body(PagoDto.class));
     }
 }

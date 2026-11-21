@@ -20,6 +20,7 @@ import org.deliverygo.ordersms.dto.ConfirmarPedidoRequest;
 import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ModificarCantidadItemRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
+import org.deliverygo.ordersms.dto.ResultadoPagoRequest;
 import org.deliverygo.ordersms.exception.CodigoError;
 import org.deliverygo.ordersms.exception.PedidoNotFoundException;
 import org.deliverygo.ordersms.exception.ReglaNegocioException;
@@ -47,7 +48,7 @@ import java.util.UUID;
  * Servicio de Pedidos: concentra las reglas de negocio de los CU CORE.
  *
  * <p>Cubre los cinco CU CORE: SRV-01 (CU-01), SRV-02 (CU-02), SRV-03 (CU-03), SRV-04
- * (CU-04) y SRV-05 (CU-05).
+ * (CU-04) y SRV-05 (CU-05), y los evolutivos SRV-06 (CU-06) y SRV-09 (CU-09).
  */
 @Service
 public class PedidoService {
@@ -397,6 +398,88 @@ public class PedidoService {
         return new PaginaPedidosResponse(resumenes, pagina, tamanio,
                 resultado.getTotalElements(), resultado.getTotalPages());
     }
+
+    /**
+     * SRV-09 — CU-09: aplica al pedido el resultado del pago que Pagos resolvio aparte.
+     *
+     * <p>El aviso no se cree: solo dice de que pago se trata. El resultado se lee de Pagos
+     * con INT-05, asi que llamar a este CU sin motivo solo sincroniza el pedido con lo que
+     * Pagos ya sabe. Por eso no pide identidad del cliente: el actor es Pagos.
+     *
+     * <p>Antes de aplicar nada verifica la correlacion: que el pago sea el asociado al
+     * pedido (400) y que Pagos lo informe para este pedido, por su total y en su moneda
+     * (422 PAYMENT_MISMATCH). El total puede no coincidir si el cliente edito el borrador
+     * despues de iniciar el pago con CU-03: ese pago no confirma el pedido nuevo.
+     *
+     * <ul>
+     *   <li>APROBADO: un BORRADOR pasa a CONFIRMADO. Un CANCELADO no se reabre (RN-04).
+     *   <li>RECHAZADO: un BORRADOR sigue en BORRADOR y el rechazo queda en el historial.
+     *   <li>PENDIENTE o REEMBOLSADO: no hay nada que aplicar.
+     * </ul>
+     *
+     * <p>Un resultado ya aplicado responde el pedido sin cambios ni una entrada nueva en
+     * el historial. Si Pagos no responde, 503 y el pedido queda como estaba.
+     */
+    @Transactional
+    public PedidoResponse procesarResultadoPago(UUID pedidoId, ResultadoPagoRequest request) {
+        Pedido pedido = pedidoRepository.findById(pedidoId)
+                .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
+
+        if (pedido.getPagoId() == null) {
+            throw new ReglaNegocioException(CodigoError.ORDER_INVALID_STATE,
+                    "El pedido " + pedidoId + " no tiene un pago iniciado");
+        }
+
+        if (!pedido.getPagoId().equals(request.codigoPago())) {
+            throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
+                    "El pago " + request.codigoPago() + " no es el asociado al pedido " + pedidoId);
+        }
+
+        // Duplicado: solo un APROBADO confirma, asi que no hace falta preguntarle a Pagos.
+        if (pedido.getEstado() == EstadoPedido.CONFIRMADO) {
+            return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+        }
+
+        // INT-05: si Pagos no responde, la excepcion sale sin tocar el pedido.
+        PagoDto pago = pagosClient.consultarPago(pedido.getPagoId())
+                .orElseThrow(() -> new ReglaNegocioException(CodigoError.PAYMENT_MISMATCH,
+                        "Pagos no conoce el pago " + request.codigoPago()));
+        verificarCorrelacion(pedido, pago);
+
+        if (pago.estado() == EstadoPago.APROBADO) {
+            // RN-04: un CANCELADO no se reabre. Con el interruptor del desvio (17/11)
+            // prendido, si.
+            validarEstado(pedido.getEstado(), EstadoPedido.CONFIRMADO);
+            transicionar(pedido, EstadoPedido.CONFIRMADO, "CU-09: pago APROBADO " + pago.codigoPago());
+        } else if (pago.estado() == EstadoPago.RECHAZADO && pedido.getEstado() == EstadoPedido.BORRADOR) {
+            String motivo = "CU-09: pago RECHAZADO " + pago.codigoPago();
+            boolean yaRegistrado = leerHistorial(pedidoId).stream()
+                    .anyMatch(entrada -> motivo.equals(entrada.getMotivo()));
+            if (!yaRegistrado) {
+                transicionar(pedido, EstadoPedido.BORRADOR, motivo);
+            }
+        }
+
+        return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+    }
+
+    /**
+     * INT-05 — CU-09: el pago que informa Pagos tiene que ser de este pedido, por su
+     * total y en su moneda.
+     */
+    private void verificarCorrelacion(Pedido pedido, PagoDto pago) {
+        boolean concuerda = pedido.getId().equals(pago.codigoPedido())
+                && pago.monto() != null && pedido.getTotal().compareTo(pago.monto()) == 0
+                && pedido.getMoneda().equals(pago.moneda());
+        if (!concuerda) {
+            throw new ReglaNegocioException(CodigoError.PAYMENT_MISMATCH,
+                    "El pago " + pago.codigoPago() + " no corresponde al pedido " + pedido.getId()
+                            + ": Pagos informa pedido " + pago.codigoPedido() + " por " + pago.monto()
+                            + " " + pago.moneda() + " y el pedido es por " + pedido.getTotal()
+                            + " " + pedido.getMoneda());
+        }
+    }
+
     /**
      * INT-02 — RN-01 y RN-06: el cliente existe y esta activo, y la direccion es una de
      * las suyas.

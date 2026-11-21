@@ -4,6 +4,7 @@ import org.deliverygo.ordersms.dto.ConfirmarPedidoRequest;
 import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ModificarCantidadItemRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
+import org.deliverygo.ordersms.dto.ResultadoPagoRequest;
 import org.deliverygo.ordersms.exception.CodigoError;
 import org.deliverygo.ordersms.exception.DependenciaNoDisponibleException;
 import org.deliverygo.ordersms.exception.EstadoInvalidoException;
@@ -211,6 +212,44 @@ class PedidoControllerTest {
                 .andExpect(jsonPath("$.historial[1].estadoNuevo").value("CONFIRMADO"));
 
         verify(pedidoService).consultarPedido(PEDIDO_ID, CLIENTE);
+    }
+
+    @Test
+    @DisplayName("API-09: el resultado del pago responde 200 y no pide la identidad del cliente")
+    void resultadoPagoResponde200SinCliente() throws Exception {
+        given(pedidoService.procesarResultadoPago(PEDIDO_ID, new ResultadoPagoRequest(PAGO_ID)))
+                .willReturn(respuestaDe(enEstado(EstadoPedido.CONFIRMADO, PAGO_ID)));
+
+        mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/payment-result")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"codigoPago\": \"" + PAGO_ID + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("CONFIRMADO"));
+
+        verify(pedidoService).procesarResultadoPago(PEDIDO_ID, new ResultadoPagoRequest(PAGO_ID));
+    }
+
+    @Test
+    @DisplayName("400, DTO-09: el codigo de pago es obligatorio")
+    void rechazaResultadoPagoSinCodigo() throws Exception {
+        mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/payment-result")
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("422: PAYMENT_MISMATCH sale con su codigo")
+    void traducePagoQueNoCorrespondeA422() throws Exception {
+        given(pedidoService.procesarResultadoPago(eq(PEDIDO_ID), any(ResultadoPagoRequest.class)))
+                .willThrow(new ReglaNegocioException(CodigoError.PAYMENT_MISMATCH, "no corresponde"));
+
+        mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/payment-result")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"codigoPago\": \"" + PAGO_ID + "\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("PAYMENT_MISMATCH"));
     }
 
     // ------------------------------------------------------------ 400 VALIDATION_ERROR

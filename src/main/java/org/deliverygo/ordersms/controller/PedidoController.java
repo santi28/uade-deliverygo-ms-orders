@@ -20,6 +20,7 @@ import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ErrorResponse;
 import org.deliverygo.ordersms.dto.ModificarCantidadItemRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
+import org.deliverygo.ordersms.dto.ResultadoPagoRequest;
 import org.deliverygo.ordersms.service.PedidoService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -513,5 +514,56 @@ public class PedidoController {
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "20") int tamanio) {
         return pedidoService.listarPedidos(clienteId, pagina, tamanio);
+    }
+
+    /**
+     * API-09 — {@code POST /api/v1/orders/{id}/payment-result} (CU-09): Pagos avisa que
+     * el pago del pedido cambio de estado y Pedidos aplica el resultado.
+     *
+     * <p>No pide {@code X-Cliente-Id}: el actor es el modulo Pagos. El cuerpo solo dice
+     * de que pago se trata; el resultado se consulta a Pagos (INT-05). Responde 200 con el
+     * pedido, haya cambiado o no, para que un aviso repetido no sea un error.
+     */
+    @Operation(summary = "CU-09 — Procesar resultado del pago",
+            description = """
+                    Lo llama Pagos cuando el pago del pedido cambia de estado. El aviso no se cree: \
+                    Pedidos consulta el pago a Pagos (INT-05) y aplica lo que responde.
+
+                    APROBADO pasa un BORRADOR a CONFIRMADO. RECHAZADO deja el BORRADOR y lo asienta en el \
+                    historial. PENDIENTE o REEMBOLSADO no cambian nada. Un aviso repetido responde el \
+                    pedido sin cambios. Un pedido CANCELADO no se reabre (RN-04).""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Resultado aplicado, o nada que aplicar"),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — falta codigoPago o no es el pago"
+                    + " del pedido",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_NOT_FOUND", ref = REF_EJEMPLOS + "ORDER_NOT_FOUND"))),
+            @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido no tiene pago iniciado,"
+                    + " o esta CANCELADO y el pago se aprobo (RN-04)",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_INVALID_STATE", ref = REF_EJEMPLOS + "ORDER_INVALID_STATE"))),
+            @ApiResponse(responseCode = "422", description = "PAYMENT_MISMATCH — Pagos no conoce el pago, o lo"
+                    + " informa para otro pedido, otro importe u otra moneda",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "PAYMENT_MISMATCH", ref = REF_EJEMPLOS + "PAYMENT_MISMATCH"))),
+            @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Pagos no responde (INT-05);"
+                    + " el pedido no cambia de estado",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
+    })
+    @PostMapping("/{id}/payment-result")
+    public PedidoResponse procesarResultadoPago(
+            @PathVariable
+            @Parameter(description = "Identificador del pedido") UUID id,
+            @Valid @RequestBody ResultadoPagoRequest request) {
+        return pedidoService.procesarResultadoPago(id, request);
     }
 }

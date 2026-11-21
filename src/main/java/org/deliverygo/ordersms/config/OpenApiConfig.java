@@ -91,6 +91,11 @@ public class OpenApiConfig {
                                         + "el pedido sigue en BORRADOR",
                                 "/api/v1/orders/3eaaefa8-b9e7-447f-9508-63035c0d874a/confirm",
                                 "Pagos rechazo el cobro, o no reembolso al cancelar"))
+                        .addExamples("PAYMENT_MISMATCH", ejemplo(422, "PAYMENT_MISMATCH",
+                                "El pago 7b1e2f3a-4c5d-4e6f-8a9b-0c1d2e3f4a5b no corresponde al pedido "
+                                        + "3eaaefa8-b9e7-447f-9508-63035c0d874a",
+                                "/api/v1/orders/3eaaefa8-b9e7-447f-9508-63035c0d874a/payment-result",
+                                "CU-09: Pagos informa el pago para otro pedido, importe o moneda (INT-05)"))
                         .addExamples("DEPENDENCY_UNAVAILABLE", ejemplo(503, "DEPENDENCY_UNAVAILABLE",
                                 "El modulo Catalogo no esta disponible",
                                 "/api/v1/orders/3eaaefa8-b9e7-447f-9508-63035c0d874a/items",
