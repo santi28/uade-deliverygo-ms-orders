@@ -310,7 +310,7 @@ Qué hay que corregir en la planilla: la ficha de CU-03, API-03, SEC-03, el diag
 **Objetivo:** demo estable y todos pueden explicar cualquier parte.
 
 - [ ] Matriz de trazabilidad revisada contra el código mergeado
-- [ ] README, de cero y completo (descripción, integrantes, tecnologías, ejecución con `docker compose` y perfiles, variables de entorno, endpoints, integraciones, datos de prueba, limitaciones)
+- [x] README, de cero y completo (descripción, integrantes, tecnologías, ejecución con `docker compose` y perfiles, variables de entorno, endpoints, integraciones, datos de prueba, limitaciones). Pendiente: verificar `docker compose up --build` en una máquina limpia, como pide la salida de la Etapa 3
 - [ ] Acta de decisiones técnicas actualizada
 - [ ] Guion de demo: caso principal, 3 integraciones, un error controlado
 - [ ] Ronda cruzada: cada integrante explica un CU que no programó
