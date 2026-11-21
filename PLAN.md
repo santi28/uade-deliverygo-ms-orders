@@ -375,7 +375,8 @@ Orden, por importancia: CU-09 (sin él ningún pedido llega a CONFIRMADO con Pag
 - [x] CU-06 listar pedidos (SRV-06, API-06, REP-06, DTO-06)
 - [x] CU-09 procesar resultado del pago (SRV-09, API-09, DTO-09, INT-05) — `ProcesarResultadoPagoServiceTest` (15), INT-05 en `PagosClientHttpTest`, API-09 en `PedidoControllerTest` y el flujo confirmar → aviso → CONFIRMADO en `PedidoControllerRegressionTest`. Falta probar INT-05 contra Pagos levantado
 - [x] CU-07 revalidar precios (SRV-07, API-07, DTO-07) — `RevalidarPreciosServiceTest` (10) y API-07 en `PedidoControllerTest`
-- [ ] CU-08 registrar transición (SRV-08)
+- [x] CU-08 registrar transición (SRV-08) — `registrarTransicion()` en `PedidoService`; CU-01 también pasa por ahí. `RegistrarTransicionServiceTest` (3)
+- [x] Corrección de RN-05: CU-02, CU-03 y CU-07 usaban solo `disponible()` y no `ProductoDto.vendible()` (desvío #4 del 03/11). Un producto INACTIVO pero disponible se podía pedir
 - [ ] CU-10 asignación logística (SRV-10, API-10, INT-06) — con mock declarado hasta resolver el contrato
 - [ ] Postman y Swagger con los CU nuevos
 - [ ] Planilla: fichas CU-06 a CU-10 con API/DTO, SEC-06 a SEC-10, matriz de trazabilidad

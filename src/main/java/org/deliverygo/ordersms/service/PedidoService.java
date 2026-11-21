@@ -51,7 +51,7 @@ import java.util.UUID;
  * Servicio de Pedidos: concentra las reglas de negocio de los CU CORE.
  *
  * <p>Cubre los cinco CU CORE: SRV-01 (CU-01), SRV-02 (CU-02), SRV-03 (CU-03), SRV-04
- * (CU-04) y SRV-05 (CU-05), y los evolutivos SRV-06 (CU-06), SRV-07 (CU-07) y SRV-09
+ * (CU-04) y SRV-05 (CU-05), y los evolutivos SRV-06 (CU-06), SRV-07 (CU-07), SRV-08 (CU-08) y SRV-09
  * (CU-09).
  */
 @Service
@@ -142,8 +142,9 @@ public class PedidoService {
         }
 
         Pedido pedido = Pedido.crear(clienteId, request.comercioId(), request.direccionEntregaId());
-        // Deja asentado el nacimiento del pedido en el historial que lee CU-05 (REL-02).
-        pedido.registrarTransicion(EstadoPedido.BORRADOR, MOTIVO_CREACION);
+        // SRV-08: deja asentado el nacimiento del pedido en el historial que lee CU-05
+        // (REL-02). Nace en BORRADOR, asi que la entrada es BORRADOR a BORRADOR.
+        registrarTransicion(pedido, EstadoPedido.BORRADOR, MOTIVO_CREACION);
 
         Pedido guardado = pedidoRepository.save(pedido);
         return new ResultadoCreacionPedido(pedidoMapper.aResponse(guardado, guardado.getHistorial()), true);
@@ -300,7 +301,7 @@ public class PedidoService {
             // BORRADOR con el pago asociado y la transicion a CONFIRMADO pasa a depender de
             // que Pagos nos avise (CU-09). El intento queda en el historial.
             pedido.asociarPago(pago.codigoPago());
-            transicionar(pedido, EstadoPedido.BORRADOR,
+            registrarTransicion(pedido, EstadoPedido.BORRADOR,
                     "CU-03: pago " + pago.codigoPago() + " iniciado, PENDIENTE de autorizacion");
             return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
         }
@@ -313,7 +314,7 @@ public class PedidoService {
         }
 
         pedido.asociarPago(pago.codigoPago());
-        transicionar(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.codigoPago());
+        registrarTransicion(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.codigoPago());
 
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
     }
@@ -365,7 +366,7 @@ public class PedidoService {
             motivo = "CU-04: cancelado con reembolso del pago " + pedido.getPagoId();
         }
 
-        transicionar(pedido, EstadoPedido.CANCELADO, motivo);
+        registrarTransicion(pedido, EstadoPedido.CANCELADO, motivo);
 
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
     }
@@ -500,13 +501,13 @@ public class PedidoService {
             // RN-04: un CANCELADO no se reabre. Con el interruptor del desvio (17/11)
             // prendido, si.
             validarEstado(pedido.getEstado(), EstadoPedido.CONFIRMADO);
-            transicionar(pedido, EstadoPedido.CONFIRMADO, "CU-09: pago APROBADO " + pago.codigoPago());
+            registrarTransicion(pedido, EstadoPedido.CONFIRMADO, "CU-09: pago APROBADO " + pago.codigoPago());
         } else if (pago.estado() == EstadoPago.RECHAZADO && pedido.getEstado() == EstadoPedido.BORRADOR) {
             String motivo = "CU-09: pago RECHAZADO " + pago.codigoPago();
             boolean yaRegistrado = leerHistorial(pedidoId).stream()
                     .anyMatch(entrada -> motivo.equals(entrada.getMotivo()));
             if (!yaRegistrado) {
-                transicionar(pedido, EstadoPedido.BORRADOR, motivo);
+                registrarTransicion(pedido, EstadoPedido.BORRADOR, motivo);
             }
         }
 
@@ -635,16 +636,27 @@ public class PedidoService {
     }
 
     /**
-     * Aplica una transicion respetando el interruptor del desvio (17/11).
+     * SRV-08 — CU-08: registra una transicion de estado y su entrada en el historial.
      *
-     * <p>Con el interruptor apagado es exactamente
+     * <p>Es el unico punto por el que un CU cambia el estado del pedido: CU-01 asienta el
+     * nacimiento, CU-02 las ediciones, CU-03 y CU-09 la confirmacion y los intentos de
+     * pago, CU-04 la cancelacion. Valida la transicion contra la maquina de estados
+     * (RN-04) y la aplica sobre el agregado; si no esta permitida corta con
+     * ORDER_INVALID_STATE antes de tocar nada.
+     *
+     * <p>No persiste por su cuenta: el estado y la entrada viajan con el pedido por
+     * cascade (DM-06) en la transaccion del CU que la llama, asi que se guardan o se
+     * deshacen juntos. El aviso a Analitica de la ficha (paso 5) queda fuera: el ecosistema
+     * no publica un endpoint para recibir eventos (desvio registrado en PLAN.md, Etapa 6).
+     *
+     * <p>Respeta el interruptor del desvio (17/11). Con el interruptor apagado es exactamente
      * {@link MaquinaEstados#transicionar(Pedido, EstadoPedido, String)}. Prendido saltea
      * RN-04 tambien aca, y no solo en {@link #validarEstado}: si no, confirmar un
      * CANCELADO pasaria la validacion previa y despues reventaria al aplicar la
      * transicion, y el interruptor no serviria de nada. El motivo que queda en el
      * historial dice que se salteo la regla.
      */
-    private HistorialEstado transicionar(Pedido pedido, EstadoPedido nuevoEstado, String motivo) {
+    private HistorialEstado registrarTransicion(Pedido pedido, EstadoPedido nuevoEstado, String motivo) {
         if (saltearValidacionEstado && !maquinaEstados.esValida(pedido.getEstado(), nuevoEstado)) {
             return maquinaEstados.transicionarSinValidar(pedido, nuevoEstado,
                     motivo + " (RN-04 salteada: " + pedido.getEstado() + " a " + nuevoEstado + ")");
@@ -655,7 +667,7 @@ public class PedidoService {
     private void registrarPagoRechazado(UUID pedidoId, UUID paymentId) {
         transaccionIndependiente.executeWithoutResult(status ->
                 pedidoRepository.findById(pedidoId).ifPresent(pedido -> {
-                    transicionar(pedido, EstadoPedido.BORRADOR,
+                    registrarTransicion(pedido, EstadoPedido.BORRADOR,
                             "CU-03: pago RECHAZADO " + paymentId);
                     pedidoRepository.save(pedido);
                 }));
@@ -687,7 +699,7 @@ public class PedidoService {
      * es lo que despues lee CU-05.
      */
     private void registrarEdicion(Pedido pedido, String motivo) {
-        transicionar(pedido, EstadoPedido.BORRADOR, motivo);
+        registrarTransicion(pedido, EstadoPedido.BORRADOR, motivo);
     }
 
     /**
