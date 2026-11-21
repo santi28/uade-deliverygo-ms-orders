@@ -21,6 +21,7 @@ import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ModificarCantidadItemRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
 import org.deliverygo.ordersms.dto.ResultadoPagoRequest;
+import org.deliverygo.ordersms.dto.RevalidacionPreciosResponse;
 import org.deliverygo.ordersms.exception.CodigoError;
 import org.deliverygo.ordersms.exception.PedidoNotFoundException;
 import org.deliverygo.ordersms.exception.ReglaNegocioException;
@@ -38,6 +39,8 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -48,7 +51,8 @@ import java.util.UUID;
  * Servicio de Pedidos: concentra las reglas de negocio de los CU CORE.
  *
  * <p>Cubre los cinco CU CORE: SRV-01 (CU-01), SRV-02 (CU-02), SRV-03 (CU-03), SRV-04
- * (CU-04) y SRV-05 (CU-05), y los evolutivos SRV-06 (CU-06) y SRV-09 (CU-09).
+ * (CU-04) y SRV-05 (CU-05), y los evolutivos SRV-06 (CU-06), SRV-07 (CU-07) y SRV-09
+ * (CU-09).
  */
 @Service
 public class PedidoService {
@@ -400,6 +404,52 @@ public class PedidoService {
     }
 
     /**
+     * SRV-07 — CU-07: compara las lineas del borrador con Catalogo antes de confirmar.
+     *
+     * <p>Solo informa: no escribe nada, ni siquiera el historial. Un precio distinto o un
+     * producto que ya no se vende no son error aca, son el resultado. Es la misma regla
+     * con la que CU-03 corta, asi que un pedido {@code valido} pasa la revalidacion de la
+     * confirmacion (mientras Catalogo no cambie en el medio).
+     *
+     * <p>El total vigente suma, al precio de hoy, solo las lineas que se pueden seguir
+     * vendiendo: es lo que costaria el pedido si el cliente saca las que no. Para aceptar
+     * un precio nuevo el cliente quita la linea y la vuelve a agregar con CU-02.
+     *
+     * <p>Mismas precondiciones que editar (REP-02, RN-04): un pedido confirmado ya se
+     * cobro y no tiene nada que revalidar. Si Catalogo no responde, 503: nunca se informa
+     * un precio supuesto (INT-01).
+     */
+    @Transactional(readOnly = true)
+    public RevalidacionPreciosResponse revalidarPrecios(UUID pedidoId, UUID clienteId) {
+        Pedido pedido = buscarBorradorEditable(pedidoId, clienteId);
+
+        if (pedido.getItems().isEmpty()) {
+            throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
+                    "El pedido " + pedidoId + " no tiene items para revalidar");
+        }
+
+        List<RevalidacionPreciosResponse.DiferenciaLinea> diferencias = new ArrayList<>();
+        BigDecimal totalVigente = BigDecimal.ZERO;
+        for (ItemPedido item : pedido.getItems()) {
+            Optional<ProductoDto> producto = catalogoClient.buscarProducto(item.getProductoId());
+            ProblemaDeLinea problema = revalidarLinea(pedido, item, producto);
+            boolean disponible = problema == null || problema.codigo() == CodigoError.PRICE_CHANGED;
+            BigDecimal precioVigente = producto.map(ProductoDto::precio).orElse(null);
+
+            if (disponible) {
+                totalVigente = totalVigente.add(precioVigente.multiply(BigDecimal.valueOf(item.getCantidad())));
+            }
+            if (problema != null) {
+                diferencias.add(new RevalidacionPreciosResponse.DiferenciaLinea(item.getProductoId(),
+                        item.getPrecioUnitario(), precioVigente, disponible, problema.codigo().name()));
+            }
+        }
+
+        return new RevalidacionPreciosResponse(pedidoId, diferencias.isEmpty(), pedido.getTotal(),
+                totalVigente, pedido.getMoneda(), diferencias);
+    }
+
+    /**
      * SRV-09 — CU-09: aplica al pedido el resultado del pago que Pagos resolvio aparte.
      *
      * <p>El aviso no se cree: solo dice de que pago se trata. El resultado se lee de Pagos
@@ -506,7 +556,8 @@ public class PedidoService {
     }
 
     /**
-     * INT-01 — CU-03: revalida cada linea contra Catalogo antes de cobrar.
+     * INT-01 — CU-03: revalida cada linea contra Catalogo antes de cobrar, con la misma
+     * regla que SRV-07, y corta en la primera que no pasa.
      *
      * <p>El precio congelado tiene que seguir siendo el vigente (RN-03): si cambio, el
      * cliente tiene que ver el total nuevo antes de pagar, asi que se corta con
@@ -514,29 +565,52 @@ public class PedidoService {
      */
     private void revalidarLineasContraCatalogo(Pedido pedido) {
         for (ItemPedido item : pedido.getItems()) {
-            ProductoDto producto = catalogoClient.buscarProducto(item.getProductoId())
-                    .orElseThrow(() -> new ReglaNegocioException(CodigoError.PRODUCT_UNAVAILABLE,
-                            "El producto " + item.getProductoId() + " ya no esta en Catalogo"));
-
-            // RN-02: el producto pudo pasar a otro comercio desde que se agrego.
-            if (!producto.comercioId().equals(pedido.getComercioId())) {
-                throw new ReglaNegocioException(CodigoError.MIXED_MERCHANT,
-                        "El producto " + item.getProductoId() + " ya no es del comercio del pedido");
-            }
-
-            // RN-05: solo productos activos y disponibles.
-            if (!producto.disponible()) {
-                throw new ReglaNegocioException(CodigoError.PRODUCT_UNAVAILABLE,
-                        "El producto " + item.getProductoId() + " no esta disponible");
-            }
-
-            // RN-03: el total se cobra con precios confirmados.
-            if (producto.precio().compareTo(item.getPrecioUnitario()) != 0) {
-                throw new ReglaNegocioException(CodigoError.PRICE_CHANGED,
-                        "El precio del producto " + item.getProductoId() + " cambio de "
-                                + item.getPrecioUnitario() + " a " + producto.precio());
+            ProblemaDeLinea problema = revalidarLinea(pedido, item,
+                    catalogoClient.buscarProducto(item.getProductoId()));
+            if (problema != null) {
+                throw new ReglaNegocioException(problema.codigo(), problema.mensaje());
             }
         }
+    }
+
+    /** SRV-07 — Por que una linea ya no se puede cobrar como esta guardada. */
+    private record ProblemaDeLinea(CodigoError codigo, String mensaje) {
+    }
+
+    /**
+     * SRV-07 — CU-07: compara una linea con lo que informa Catalogo. Es la regla que
+     * comparten CU-03, que corta con el problema, y API-07, que lo informa.
+     *
+     * @param producto lo que respondio INT-01; vacio si el producto ya no esta
+     * @return el problema de la linea, o {@code null} si sigue disponible y al mismo
+     *         precio
+     */
+    private ProblemaDeLinea revalidarLinea(Pedido pedido, ItemPedido item, Optional<ProductoDto> producto) {
+        if (producto.isEmpty()) {
+            return new ProblemaDeLinea(CodigoError.PRODUCT_UNAVAILABLE,
+                    "El producto " + item.getProductoId() + " ya no esta en Catalogo");
+        }
+        ProductoDto vigente = producto.get();
+
+        // RN-02: el producto pudo pasar a otro comercio desde que se agrego.
+        if (!vigente.comercioId().equals(pedido.getComercioId())) {
+            return new ProblemaDeLinea(CodigoError.MIXED_MERCHANT,
+                    "El producto " + item.getProductoId() + " ya no es del comercio del pedido");
+        }
+
+        // RN-05: solo productos activos y disponibles.
+        if (!vigente.disponible()) {
+            return new ProblemaDeLinea(CodigoError.PRODUCT_UNAVAILABLE,
+                    "El producto " + item.getProductoId() + " no esta disponible");
+        }
+
+        // RN-03: el total se cobra con precios confirmados.
+        if (vigente.precio().compareTo(item.getPrecioUnitario()) != 0) {
+            return new ProblemaDeLinea(CodigoError.PRICE_CHANGED,
+                    "El precio del producto " + item.getProductoId() + " cambio de "
+                            + item.getPrecioUnitario() + " a " + vigente.precio());
+        }
+        return null;
     }
 
     /**

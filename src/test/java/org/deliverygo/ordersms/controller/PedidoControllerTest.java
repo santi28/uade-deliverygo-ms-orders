@@ -5,6 +5,7 @@ import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ModificarCantidadItemRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
 import org.deliverygo.ordersms.dto.ResultadoPagoRequest;
+import org.deliverygo.ordersms.dto.RevalidacionPreciosResponse;
 import org.deliverygo.ordersms.exception.CodigoError;
 import org.deliverygo.ordersms.exception.DependenciaNoDisponibleException;
 import org.deliverygo.ordersms.exception.EstadoInvalidoException;
@@ -26,6 +27,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.endsWith;
@@ -212,6 +215,23 @@ class PedidoControllerTest {
                 .andExpect(jsonPath("$.historial[1].estadoNuevo").value("CONFIRMADO"));
 
         verify(pedidoService).consultarPedido(PEDIDO_ID, CLIENTE);
+    }
+
+    @Test
+    @DisplayName("API-07: revalidar precios responde 200 con las diferencias")
+    void revalidarPreciosResponde200() throws Exception {
+        given(pedidoService.revalidarPrecios(PEDIDO_ID, CLIENTE)).willReturn(new RevalidacionPreciosResponse(
+                PEDIDO_ID, false, new BigDecimal("8500.00"), new BigDecimal("9200.00"), "ARS",
+                List.of(new RevalidacionPreciosResponse.DiferenciaLinea(PRODUCTO, new BigDecimal("8500.00"),
+                        new BigDecimal("9200.00"), true, "PRICE_CHANGED"))));
+
+        mvc.perform(get(PEDIDOS + "/" + PEDIDO_ID + "/price-check")
+                        .header(PedidoController.HEADER_CLIENTE, CLIENTE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valido").value(false))
+                .andExpect(jsonPath("$.diferencias[0].motivo").value("PRICE_CHANGED"));
+
+        verify(pedidoService).revalidarPrecios(PEDIDO_ID, CLIENTE);
     }
 
     @Test

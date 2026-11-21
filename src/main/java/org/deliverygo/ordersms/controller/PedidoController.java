@@ -21,6 +21,7 @@ import org.deliverygo.ordersms.dto.ErrorResponse;
 import org.deliverygo.ordersms.dto.ModificarCantidadItemRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
 import org.deliverygo.ordersms.dto.ResultadoPagoRequest;
+import org.deliverygo.ordersms.dto.RevalidacionPreciosResponse;
 import org.deliverygo.ordersms.service.PedidoService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -514,6 +515,51 @@ public class PedidoController {
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "20") int tamanio) {
         return pedidoService.listarPedidos(clienteId, pagina, tamanio);
+    }
+
+    /**
+     * API-07 — {@code GET /api/v1/orders/{id}/price-check} (CU-07): compara el borrador
+     * con Catalogo antes de confirmar, sin modificarlo.
+     *
+     * <p>Un precio distinto no es error: responde 200 con las diferencias.
+     */
+    @Operation(summary = "CU-07 — Revalidar precios antes de confirmar",
+            description = """
+                    Compara cada linea del borrador con Catalogo (INT-01) con la misma regla con la que \
+                    CU-03 revalida antes de cobrar, pero no escribe nada: informa que lineas cambiaron \
+                    de precio o ya no se venden, y el total al precio de hoy.
+
+                    Para aceptar un precio nuevo, quitar la linea y volver a agregarla (CU-02).""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Comparacion hecha; valido=false si algo cambio"),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — el pedido no tiene items, o falta"
+                    + " la cabecera X-Cliente-Id",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
+                    + " cliente",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_NOT_FOUND", ref = REF_EJEMPLOS + "ORDER_NOT_FOUND"))),
+            @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido ya no es un borrador"
+                    + " (RN-04)",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_INVALID_STATE", ref = REF_EJEMPLOS + "ORDER_INVALID_STATE"))),
+            @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Catalogo no responde (INT-01)",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
+    })
+    @GetMapping("/{id}/price-check")
+    public RevalidacionPreciosResponse revalidarPrecios(
+            @PathVariable
+            @Parameter(description = "Identificador del pedido") UUID id,
+            @RequestHeader(HEADER_CLIENTE)
+            @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
+            UUID clienteId) {
+        return pedidoService.revalidarPrecios(id, clienteId);
     }
 
     /**

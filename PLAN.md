@@ -374,7 +374,7 @@ Orden, por importancia: CU-09 (sin él ningún pedido llega a CONFIRMADO con Pag
 
 - [x] CU-06 listar pedidos (SRV-06, API-06, REP-06, DTO-06)
 - [x] CU-09 procesar resultado del pago (SRV-09, API-09, DTO-09, INT-05) — `ProcesarResultadoPagoServiceTest` (15), INT-05 en `PagosClientHttpTest`, API-09 en `PedidoControllerTest` y el flujo confirmar → aviso → CONFIRMADO en `PedidoControllerRegressionTest`. Falta probar INT-05 contra Pagos levantado
-- [ ] CU-07 revalidar precios (SRV-07, API-07, DTO-07)
+- [x] CU-07 revalidar precios (SRV-07, API-07, DTO-07) — `RevalidarPreciosServiceTest` (10) y API-07 en `PedidoControllerTest`
 - [ ] CU-08 registrar transición (SRV-08)
 - [ ] CU-10 asignación logística (SRV-10, API-10, INT-06) — con mock declarado hasta resolver el contrato
 - [ ] Postman y Swagger con los CU nuevos
@@ -384,7 +384,8 @@ Orden, por importancia: CU-09 (sin él ningún pedido llega a CONFIRMADO con Pag
 
 **CU-07 — Revalidar precios.** SRV-07 `revalidarPrecios()` es la revalidación que hoy hace CU-03 por dentro (`revalidarLineasContraCatalogo`), extraída como servicio propio. CU-03 la sigue usando y corta con `PRICE_CHANGED` / `PRODUCT_UNAVAILABLE` / `MIXED_MERCHANT` como hasta ahora.
 
-- API-07 `GET /api/v1/orders/{id}/price-check` (con `X-Cliente-Id`): **solo informa**, no escribe nada. Responde 200 con DTO-07 `RevalidacionPreciosResponse { pedidoId, valido, totalGuardado, totalVigente, diferencias[] }`, cada diferencia `{ productoId, precioGuardado, precioVigente, disponible }`. Un precio distinto no es error en este endpoint: es el resultado.
+- API-07 `GET /api/v1/orders/{id}/price-check` (con `X-Cliente-Id`): **solo informa**, no escribe nada. Responde 200 con DTO-07 `RevalidacionPreciosResponse { pedidoId, valido, totalGuardado, totalVigente, moneda, diferencias[] }`, cada diferencia `{ productoId, precioGuardado, precioVigente, disponible, motivo }`. `motivo` es el código con el que CU-03 cortaría (`PRICE_CHANGED`, `PRODUCT_UNAVAILABLE`, `MIXED_MERCHANT`) y `precioVigente` es nulo si el producto ya no está en Catálogo. `totalVigente` suma al precio de hoy solo las líneas que se siguen vendiendo. Un precio distinto no es error en este endpoint: es el resultado. Mismas precondiciones que editar: solo un BORRADOR con ítems (si no, 409 o 400).
+- La regla por línea (`revalidarLinea`) es una sola y la comparten CU-03, que corta en la primera diferencia, y API-07, que las informa todas.
 - La planilla deja la "aceptación explícita" del precio nuevo por acordar. No se agrega un endpoint de aceptación: el cliente acepta quitando la línea y volviéndola a agregar con CU-02, que congela el precio vigente. Sin sobrescritura silenciosa.
 - Catálogo caído: 503, nunca un precio supuesto (INT-01). Usa REP-02.
 
