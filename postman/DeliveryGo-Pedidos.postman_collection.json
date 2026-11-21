@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "DeliveryGo — Modulo Pedidos (Grupo 5)",
-    "description": "Un caso por CU CORE y uno por cada flujo alternativo (CU-01 a CU-05).\n\nLas carpetas estan en orden de ejecucion: correr la coleccion completa de arriba abajo deja todos los tests en verde. El orden importa porque un cliente puede tener un solo borrador abierto a la vez (REP-01), asi que los casos comparten el pedido que crea CU-01 y lo van llevando por sus estados.\n\nRequiere la app levantada con los mocks activos (cualquier perfil que no sea `integracion`) y los datos de prueba de DatosMock.\n\nLa identidad viaja en la cabecera X-Cliente-Id. Es provisoria: en la Etapa 4 la reemplaza el JWT de Usuarios.",
+    "description": "Un caso por CU y uno por cada flujo alternativo (CU-01 a CU-10; CU-08 no tiene endpoint y se ve en el historial que devuelve cada CU).\n\nLas carpetas estan en orden de ejecucion: correr la coleccion completa de arriba abajo deja todos los tests en verde. El orden importa porque un cliente puede tener un solo borrador abierto a la vez (REP-01), asi que los casos comparten el pedido que crea CU-01 y lo van llevando por sus estados.\n\nEl pago es asincronico (desvio del 03/11): CU-03 deja el pedido en BORRADOR con el pago PENDIENTE y CU-09 lo confirma. El mock de Pagos aprueba al consultar los pagos que inicio, y el de Logistica (CU-10) asigna siempre.\n\nRequiere la app levantada con los mocks activos (cualquier perfil que no sea `integracion`) y los datos de prueba de DatosMock.\n\nLa identidad viaja en la cabecera X-Cliente-Id. Es provisoria: en la Etapa 4 la reemplaza el JWT de Usuarios.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -96,7 +96,7 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.test(\"responde 200, no 201: no crea otro pedido\", () => pm.response.to.have.status(200));",
                   "pm.test(\"es el mismo pedido\", () => pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get(\"pedidoId\")));"
                 ]
               }
@@ -921,7 +921,7 @@
       ]
     },
     {
-      "name": "CU-03 Confirmar pedido",
+      "name": "CU-03 Confirmar pedido, CU-07 revalidar precios y CU-09 resultado del pago",
       "item": [
         {
           "name": "CU-03 Alternativa: falta el medio de pago",
@@ -1133,7 +1133,74 @@
           ]
         },
         {
-          "name": "CU-03 Confirmar pedido (camino feliz)",
+          "name": "CU-07 Revalidar precios (camino feliz)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/price-check",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/price-check"
+              ]
+            },
+            "description": "Compara el borrador con Catalogo sin modificarlo. Con el mock los precios no cambian: el pedido es valido y los dos totales coinciden."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"es valido y sin diferencias\", () => {",
+                  "    pm.expect(r.valido).to.eql(true);",
+                  "    pm.expect(r.diferencias).to.have.lengthOf(0);",
+                  "});",
+                  "pm.test(\"el total vigente es el guardado\", () => pm.expect(r.totalVigente).to.eql(r.totalGuardado));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-07 Alternativa: pedido de otro cliente",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteInactivo}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/price-check",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/price-check"
+              ]
+            },
+            "description": "Un pedido ajeno responde igual que uno inexistente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code ORDER_NOT_FOUND\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-03 Confirmar pedido (camino feliz: inicia el pago)",
           "request": {
             "method": "POST",
             "header": [
@@ -1152,7 +1219,7 @@
                 "{{baseUrl}}/api/v1/orders/{{pedidoId}}/confirm"
               ]
             },
-            "description": "Revalida cliente, direccion, precios y disponibilidad, cobra y pasa a CONFIRMADO.",
+            "description": "Revalida cliente, direccion, precios y disponibilidad e inicia el pago (INT-03). Pagos lo crea PENDIENTE, asi que el pedido sigue en BORRADOR con el pago asociado hasta que CU-09 aplique el resultado.",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"medioPago\": \"TARJETA_CREDITO\"\n}",
@@ -1172,11 +1239,249 @@
                   "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
                   "const p = pm.response.json();",
                   "pm.collectionVariables.set(\"pagoId\", p.pagoId);",
-                  "pm.test(\"queda CONFIRMADO con pago asociado\", () => {",
-                  "    pm.expect(p.estado).to.eql(\"CONFIRMADO\");",
+                  "pm.test(\"sigue en BORRADOR con el pago asociado\", () => {",
+                  "    pm.expect(p.estado).to.eql(\"BORRADOR\");",
                   "    pm.expect(p.pagoId).to.not.be.null;",
                   "});",
-                  "pm.test(\"la confirmacion quedo en el historial\", () => pm.expect(p.historial[p.historial.length - 1].estadoNuevo).to.eql(\"CONFIRMADO\"));"
+                  "pm.test(\"el pago PENDIENTE quedo en el historial\", () => pm.expect(p.historial[p.historial.length - 1].motivo).to.include(\"PENDIENTE\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-09 Alternativa: falta codigoPago",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/payment-result",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/payment-result"
+              ]
+            },
+            "description": "DTO-09 exige el codigo del pago.",
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-09 Alternativa: aviso de otro pago",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/payment-result",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/payment-result"
+              ]
+            },
+            "description": "El codigo no es el pago asociado al pedido: se rechaza sin consultar a Pagos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigoPago\": \"00000000-0000-0000-0000-000000000000\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-09 Procesar resultado del pago (camino feliz)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/payment-result",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/payment-result"
+              ]
+            },
+            "description": "Lo llama Pagos, sin X-Cliente-Id. Pedidos consulta el pago (INT-05) y, como esta APROBADO, pasa el pedido a CONFIRMADO.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigoPago\": \"{{pagoId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"queda CONFIRMADO\", () => pm.expect(p.estado).to.eql(\"CONFIRMADO\"));",
+                  "pm.test(\"la confirmacion quedo en el historial\", () => pm.expect(p.historial[p.historial.length - 1].motivo).to.include(\"CU-09: pago APROBADO\"));",
+                  "pm.collectionVariables.set(\"historialConfirmado\", p.historial.length);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-09 Alternativa: aviso repetido (idempotente)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/payment-result",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/payment-result"
+              ]
+            },
+            "description": "Un resultado ya aplicado responde el pedido sin cambios ni otra entrada en el historial.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigoPago\": \"{{pagoId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"sigue CONFIRMADO sin entrada nueva\", () => {",
+                  "    pm.expect(p.estado).to.eql(\"CONFIRMADO\");",
+                  "    pm.expect(p.historial.length).to.eql(Number(pm.collectionVariables.get(\"historialConfirmado\")));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-09 Alternativa: pedido inexistente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000/payment-result",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/00000000-0000-0000-0000-000000000000/payment-result"
+              ]
+            },
+            "description": "Pedido que no existe.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigoPago\": \"{{pagoId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code ORDER_NOT_FOUND\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-07 Alternativa: pedido confirmado (RN-04)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoId}}/price-check",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoId}}/price-check"
+              ]
+            },
+            "description": "Un pedido confirmado ya se cobro: no hay nada que revalidar."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code ORDER_INVALID_STATE\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_INVALID_STATE\"));"
                 ]
               }
             }
@@ -1662,6 +1967,443 @@
           ]
         }
       ]
+    },
+    {
+      "name": "CU-06 Listar pedidos del cliente",
+      "item": [
+        {
+          "name": "CU-06 Listar pedidos (camino feliz)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders?pagina=0&tamanio=20",
+              "host": [
+                "{{baseUrl}}/api/v1/orders?pagina=0&tamanio=20"
+              ]
+            },
+            "description": "Pagina de pedidos del cliente, del mas nuevo al mas viejo. Ya tiene al menos los dos cancelados de CU-04."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const r = pm.response.json();",
+                  "pm.test(\"trae los pedidos del cliente\", () => {",
+                  "    pm.expect(r.totalElementos).to.be.at.least(2);",
+                  "    pm.expect(r.pedidos.map(p => p.id)).to.include(pm.collectionVariables.get(\"pedidoId\"));",
+                  "});",
+                  "pm.test(\"ordena del mas nuevo al mas viejo\", () => pm.expect(r.pedidos[0].id).to.eql(pm.collectionVariables.get(\"borradorId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-06 Alternativa: otro cliente no ve estos pedidos",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteInactivo}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders?pagina=0&tamanio=100",
+              "host": [
+                "{{baseUrl}}/api/v1/orders?pagina=0&tamanio=100"
+              ]
+            },
+            "description": "El listado se filtra por la identidad: los pedidos de otro cliente no aparecen."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"no incluye pedidos ajenos\", () => pm.expect(pm.response.json().pedidos.map(p => p.id)).to.not.include(pm.collectionVariables.get(\"pedidoId\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-06 Alternativa: tamanio fuera de rango",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders?pagina=0&tamanio=101",
+              "host": [
+                "{{baseUrl}}/api/v1/orders?pagina=0&tamanio=101"
+              ]
+            },
+            "description": "El tamanio va de 1 a 100."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 400\", () => pm.response.to.have.status(400));",
+                  "pm.test(\"code VALIDATION_ERROR\", () => pm.expect(pm.response.json().code).to.eql(\"VALIDATION_ERROR\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CU-10 Solicitar asignacion logistica",
+      "item": [
+        {
+          "name": "Preparar pedido para entregar: borrador nuevo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders",
+              "host": [
+                "{{baseUrl}}/api/v1/orders"
+              ]
+            },
+            "description": "Los pedidos anteriores estan cancelados, asi que el cliente puede abrir otro.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"comercioId\": {{comercioPizzeria}},\n  \"direccionEntregaId\": \"{{direccion}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 201\", () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set(\"pedidoEntregaId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preparar pedido para entregar: una pizza",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/items",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/items"
+              ]
+            },
+            "description": "Una linea, por debajo del limite de rechazo del mock de Pagos.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"productoId\": {{productoPizza}}, \"cantidad\": 1 }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-10 Alternativa: pedido en BORRADOR (RN-04)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/delivery",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/delivery"
+              ]
+            },
+            "description": "Solo un pedido confirmado pide la entrega; no se llama a Logistica."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code ORDER_INVALID_STATE\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_INVALID_STATE\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preparar pedido para entregar: iniciar el pago",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/confirm",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/confirm"
+              ]
+            },
+            "description": "CU-03: el pago queda PENDIENTE.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"medioPago\": \"TARJETA_CREDITO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.collectionVariables.set(\"pagoEntregaId\", pm.response.json().pagoId);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Preparar pedido para entregar: confirmar con CU-09",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/payment-result",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/payment-result"
+              ]
+            },
+            "description": "Pagos avisa el resultado y el pedido queda CONFIRMADO.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"codigoPago\": \"{{pagoEntregaId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"queda CONFIRMADO\", () => pm.expect(pm.response.json().estado).to.eql(\"CONFIRMADO\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-10 Alternativa: pedido de otro cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteInactivo}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/delivery",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/delivery"
+              ]
+            },
+            "description": "Un pedido ajeno responde igual que uno inexistente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 404\", () => pm.response.to.have.status(404));",
+                  "pm.test(\"code ORDER_NOT_FOUND\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_NOT_FOUND\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-10 Solicitar asignacion logistica (camino feliz)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/delivery",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/delivery"
+              ]
+            },
+            "description": "Pide la entrega a Logistica (INT-06, mock declarado) y pasa el pedido a EN_PREPARACION."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "const p = pm.response.json();",
+                  "pm.test(\"queda EN_PREPARACION\", () => pm.expect(p.estado).to.eql(\"EN_PREPARACION\"));",
+                  "pm.test(\"la entrega quedo en el historial\", () => pm.expect(p.historial[p.historial.length - 1].motivo).to.include(\"CU-10: entrega\"));",
+                  "pm.collectionVariables.set(\"historialEntrega\", p.historial.length);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-10 Alternativa: solicitud repetida",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/delivery",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}/delivery"
+              ]
+            },
+            "description": "La entrega ya se pidio: responde el pedido sin volver a llamar a Logistica."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"sin entrada nueva en el historial\", () => pm.expect(pm.response.json().historial.length).to.eql(Number(pm.collectionVariables.get(\"historialEntrega\"))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CU-04 Alternativa: cancelar un pedido EN_PREPARACION",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "X-Cliente-Id",
+                "value": "{{clienteId}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}",
+              "host": [
+                "{{baseUrl}}/api/v1/orders/{{pedidoEntregaId}}"
+              ]
+            },
+            "description": "Con la entrega en curso en Logistica el pedido ya no se cancela desde Pedidos."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"responde 409\", () => pm.response.to.have.status(409));",
+                  "pm.test(\"code ORDER_INVALID_STATE\", () => pm.expect(pm.response.json().code).to.eql(\"ORDER_INVALID_STATE\"));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "variable": [
@@ -1731,7 +2473,27 @@
     {
       "key": "pagoId",
       "value": "",
-      "description": "Lo setea CU-03"
+      "description": "Lo setea CU-03; lo usa CU-09"
+    },
+    {
+      "key": "historialConfirmado",
+      "value": "",
+      "description": "Lo setea CU-09 para verificar la idempotencia"
+    },
+    {
+      "key": "pedidoEntregaId",
+      "value": "",
+      "description": "Lo setea la preparacion de CU-10"
+    },
+    {
+      "key": "pagoEntregaId",
+      "value": "",
+      "description": "Lo setea la preparacion de CU-10"
+    },
+    {
+      "key": "historialEntrega",
+      "value": "",
+      "description": "Lo setea CU-10 para verificar la idempotencia"
     }
   ]
 }

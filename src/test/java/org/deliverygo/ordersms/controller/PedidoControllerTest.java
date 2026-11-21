@@ -4,6 +4,8 @@ import org.deliverygo.ordersms.dto.ConfirmarPedidoRequest;
 import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ModificarCantidadItemRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
+import org.deliverygo.ordersms.dto.ResultadoPagoRequest;
+import org.deliverygo.ordersms.dto.RevalidacionPreciosResponse;
 import org.deliverygo.ordersms.exception.CodigoError;
 import org.deliverygo.ordersms.exception.DependenciaNoDisponibleException;
 import org.deliverygo.ordersms.exception.EstadoInvalidoException;
@@ -25,6 +27,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.endsWith;
@@ -211,6 +215,82 @@ class PedidoControllerTest {
                 .andExpect(jsonPath("$.historial[1].estadoNuevo").value("CONFIRMADO"));
 
         verify(pedidoService).consultarPedido(PEDIDO_ID, CLIENTE);
+    }
+
+    @Test
+    @DisplayName("API-07: revalidar precios responde 200 con las diferencias")
+    void revalidarPreciosResponde200() throws Exception {
+        given(pedidoService.revalidarPrecios(PEDIDO_ID, CLIENTE)).willReturn(new RevalidacionPreciosResponse(
+                PEDIDO_ID, false, new BigDecimal("8500.00"), new BigDecimal("9200.00"), "ARS",
+                List.of(new RevalidacionPreciosResponse.DiferenciaLinea(PRODUCTO, new BigDecimal("8500.00"),
+                        new BigDecimal("9200.00"), true, "PRICE_CHANGED"))));
+
+        mvc.perform(get(PEDIDOS + "/" + PEDIDO_ID + "/price-check")
+                        .header(PedidoController.HEADER_CLIENTE, CLIENTE))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valido").value(false))
+                .andExpect(jsonPath("$.diferencias[0].motivo").value("PRICE_CHANGED"));
+
+        verify(pedidoService).revalidarPrecios(PEDIDO_ID, CLIENTE);
+    }
+
+    @Test
+    @DisplayName("API-09: el resultado del pago responde 200 y no pide la identidad del cliente")
+    void resultadoPagoResponde200SinCliente() throws Exception {
+        given(pedidoService.procesarResultadoPago(PEDIDO_ID, new ResultadoPagoRequest(PAGO_ID)))
+                .willReturn(respuestaDe(enEstado(EstadoPedido.CONFIRMADO, PAGO_ID)));
+
+        mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/payment-result")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"codigoPago\": \"" + PAGO_ID + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.estado").value("CONFIRMADO"));
+
+        verify(pedidoService).procesarResultadoPago(PEDIDO_ID, new ResultadoPagoRequest(PAGO_ID));
+    }
+
+    @Test
+    @DisplayName("API-10: solicitar la entrega responde 200 con el pedido EN_PREPARACION")
+    void solicitarEntregaResponde200() throws Exception {
+        given(pedidoService.solicitarAsignacionLogistica(PEDIDO_ID, CLIENTE))
+                .willReturn(respuestaDe(enEstado(EstadoPedido.CONFIRMADO, PAGO_ID)));
+
+        mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/delivery")
+                        .header(PedidoController.HEADER_CLIENTE, CLIENTE))
+                .andExpect(status().isOk());
+
+        verify(pedidoService).solicitarAsignacionLogistica(PEDIDO_ID, CLIENTE);
+    }
+
+    @Test
+    @DisplayName("400, API-10: solicitar la entrega exige la identidad del cliente")
+    void solicitarEntregaSinCliente() throws Exception {
+        mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/delivery"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("400, DTO-09: el codigo de pago es obligatorio")
+    void rechazaResultadoPagoSinCodigo() throws Exception {
+        mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/payment-result")
+                        .contentType(APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("422: PAYMENT_MISMATCH sale con su codigo")
+    void traducePagoQueNoCorrespondeA422() throws Exception {
+        given(pedidoService.procesarResultadoPago(eq(PEDIDO_ID), any(ResultadoPagoRequest.class)))
+                .willThrow(new ReglaNegocioException(CodigoError.PAYMENT_MISMATCH, "no corresponde"));
+
+        mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/payment-result")
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"codigoPago\": \"" + PAGO_ID + "\"}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("PAYMENT_MISMATCH"));
     }
 
     // ------------------------------------------------------------ 400 VALIDATION_ERROR

@@ -1,4 +1,4 @@
-# Contrato HTTP del modulo Pedidos (API-01 a API-05), exportado de springdoc.
+# Contrato HTTP del modulo Pedidos (API-01 a API-10; API-08 no existe: CU-08 es interno), exportado de springdoc.
 #
 # Generado, no se edita a mano: los endpoints se documentan con anotaciones en
 # PedidoController y en los DTOs, y los ejemplos de error en OpenApiConfig.
@@ -12,19 +12,22 @@ openapi: 3.1.0
 info:
   title: DeliveryGo — Modulo Pedidos
   description: |
-    Ciclo funcional de la compra: crear el pedido, cargar items, confirmarlo, cancelarlo y consultarlo (CU-01 a CU-05).
+    Ciclo funcional de la compra: crear el pedido, cargar items, revalidar precios, confirmarlo, aplicar el resultado del pago, pedir la entrega, cancelarlo, consultarlo y listarlo (CU-01 a CU-10; CU-08 es interno y se ve en el historial de cada pedido).
 
-    El modulo es dueño de Pedido, ItemPedido e HistorialEstado. Usuarios, productos, pagos y entregas se referencian por ID y se validan por REST (INT-01 a INT-04).
+    El modulo es dueño de Pedido, ItemPedido e HistorialEstado. Usuarios, productos, pagos y entregas se referencian por ID y se validan por REST (INT-01 a INT-06).
 
-    Estado actual: los cinco CU CORE implementados, con las integraciones respondiendo con mocks declarados (perfil distinto de `integracion`).
+    El pago es asincronico: CU-03 lo inicia y deja el pedido en BORRADOR con el pago PENDIENTE; CU-09 lo pasa a CONFIRMADO cuando Pagos lo aprueba.
+
+    Sin el perfil `integracion` todas las integraciones responden con mocks declarados. Usuarios (INT-02) y Logistica (INT-06) son mock en todos los perfiles: no hay contrato compatible publicado.
 
     Datos de prueba de los mocks:
     * cliente activo `11111111-1111-1111-1111-111111111111`, direccion `aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa`
     * cliente dado de baja `22222222-2222-2222-2222-222222222222` (RN-01)
-    * comercios `99999999-…` (pizzeria) y `88888888-…` (kiosco)
-    * productos de la pizzeria: pizza `33333333-…` (8500), empanada `44444444-…` (1200) y helado `66666666-…` (sin stock, RN-05)
-    * producto del kiosco: gaseosa `55555555-…` (sirve para RN-02)
-    * Pagos rechaza los cobros de 100000 en adelante (12 pizzas alcanzan) y reembolsa siempre
+    * comercios `10` (pizzeria) y `20` (kiosco)
+    * productos de la pizzeria: pizza `1` (8500), empanada `2` (1200) y helado `4` (sin stock, RN-05)
+    * producto del kiosco: gaseosa `3` (sirve para RN-02)
+    * Pagos rechaza los cobros de 100000 en adelante (12 pizzas alcanzan), aprueba al consultar (CU-09) los pagos que inicio y reembolsa siempre
+    * Logistica asigna siempre (CU-10)
   contact:
     name: Grupo 5 — Aplicaciones Interactivas (UADE)
   license:
@@ -32,10 +35,12 @@ info:
   version: v1
 servers:
 - url: http://localhost:8080
-  description: Entorno local (perfil dev o test)
+  description: Generated server url
 tags:
 - name: Pedidos
-  description: Ciclo funcional de la compra (CU-01 a CU-05)
+  description: Ciclo funcional de la compra (CU-01 a CU-10)
+- name: Status
+  description: Health check del microservicio (fuera de la planilla)
 paths:
   /api/v1/orders/{id}/items/{productoId}:
     put:
@@ -62,9 +67,9 @@ paths:
         description: Producto de la linea a modificar
         required: true
         schema:
-          type: string
-          format: uuid
-        example: 33333333-3333-3333-3333-333333333333
+          type: integer
+          format: int64
+        example: 1
       - name: X-Cliente-Id
         in: header
         description: "Identidad del cliente autenticado (RN-01). Provisoria: la reemplaza\
@@ -172,9 +177,9 @@ paths:
         description: Producto de la linea a sacar
         required: true
         schema:
-          type: string
-          format: uuid
-        example: 44444444-4444-4444-4444-444444444444
+          type: integer
+          format: int64
+        example: 2
       - name: X-Cliente-Id
         in: header
         description: "Identidad del cliente autenticado (RN-01). Provisoria: la reemplaza\
@@ -220,6 +225,39 @@ paths:
                 ORDER_INVALID_STATE:
                   $ref: "#/components/examples/ORDER_INVALID_STATE"
   /api/v1/orders:
+    get:
+      tags:
+      - Pedidos
+      summary: CU-06 — Listar pedidos del cliente
+      operationId: listarPedidos
+      parameters:
+      - name: X-Cliente-Id
+        in: header
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: pagina
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - name: tamanio
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 20
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PaginaPedidosResponse"
     post:
       tags:
       - Pedidos
@@ -252,18 +290,18 @@ paths:
                 description: "Cliente activo y direccion suya, segun los datos de\
                   \ los mocks"
                 value:
-                  comercioId: 99999999-9999-9999-9999-999999999999
+                  comercioId: 10
                   direccionEntregaId: aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa
         required: true
       responses:
         "201":
-          description: "Pedido creado"
+          description: Pedido creado
           content:
             '*/*':
               schema:
                 $ref: "#/components/schemas/PedidoResponse"
         "200":
-          description: "Borrador abierto ya existente"
+          description: Borrador abierto ya existente
           content:
             '*/*':
               schema:
@@ -290,6 +328,85 @@ paths:
                   $ref: "#/components/examples/MIXED_MERCHANT"
         "503":
           description: DEPENDENCY_UNAVAILABLE — Usuarios no responde (INT-02)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                DEPENDENCY_UNAVAILABLE:
+                  $ref: "#/components/examples/DEPENDENCY_UNAVAILABLE"
+  /api/v1/orders/{id}/payment-result:
+    post:
+      tags:
+      - Pedidos
+      summary: CU-09 — Procesar resultado del pago
+      description: |-
+        Lo llama Pagos cuando el pago del pedido cambia de estado. El aviso no se cree: Pedidos consulta el pago a Pagos (INT-05) y aplica lo que responde.
+
+        APROBADO pasa un BORRADOR a CONFIRMADO. RECHAZADO deja el BORRADOR y lo asienta en el historial. PENDIENTE o REEMBOLSADO no cambian nada. Un aviso repetido responde el pedido sin cambios. Un pedido CANCELADO no se reabre (RN-04).
+      operationId: procesarResultadoPago
+      parameters:
+      - name: id
+        in: path
+        description: Identificador del pedido
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResultadoPagoRequest"
+        required: true
+      responses:
+        "200":
+          description: "Resultado aplicado, o nada que aplicar"
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "400":
+          description: VALIDATION_ERROR — falta codigoPago o no es el pago del pedido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                VALIDATION_ERROR:
+                  $ref: "#/components/examples/VALIDATION_ERROR"
+        "404":
+          description: ORDER_NOT_FOUND — el pedido no existe
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                ORDER_NOT_FOUND:
+                  $ref: "#/components/examples/ORDER_NOT_FOUND"
+        "409":
+          description: "ORDER_INVALID_STATE — el pedido no tiene pago iniciado, o\
+            \ esta CANCELADO y el pago se aprobo (RN-04)"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                ORDER_INVALID_STATE:
+                  $ref: "#/components/examples/ORDER_INVALID_STATE"
+        "422":
+          description: "PAYMENT_MISMATCH — Pagos no conoce el pago, o lo informa para\
+            \ otro pedido, otro importe u otra moneda"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                PAYMENT_MISMATCH:
+                  $ref: "#/components/examples/PAYMENT_MISMATCH"
+        "503":
+          description: DEPENDENCY_UNAVAILABLE — Pagos no responde (INT-05); el pedido
+            no cambia de estado
           content:
             application/json:
               schema:
@@ -339,27 +456,27 @@ paths:
                 description: "Agrega 2 pizzas y 3 empanadas: total 20600"
                 value:
                   items:
-                  - productoId: 33333333-3333-3333-3333-333333333333
+                  - productoId: 1
                     cantidad: 2
-                  - productoId: 44444444-4444-4444-4444-444444444444
+                  - productoId: 2
                     cantidad: 3
               "2 - Producto de otro comercio (RN-02)":
                 description: "La gaseosa es del kiosco: responde 422 MIXED_MERCHANT"
                 value:
                   items:
-                  - productoId: 55555555-5555-5555-5555-555555555555
+                  - productoId: 3
                     cantidad: 1
               "3 - Producto sin stock (RN-05)":
                 description: "El helado no esta disponible: responde 422 PRODUCT_UNAVAILABLE"
                 value:
                   items:
-                  - productoId: 66666666-6666-6666-6666-666666666666
+                  - productoId: 4
                     cantidad: 1
               "4 - Cantidad invalida":
                 description: "Cero o negativa: responde 400 VALIDATION_ERROR"
                 value:
                   items:
-                  - productoId: 33333333-3333-3333-3333-333333333333
+                  - productoId: 1
                     cantidad: 0
         required: true
       responses:
@@ -370,9 +487,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/PedidoResponse"
         "400":
-          description: "VALIDATION_ERROR — lista vacia, elemento nulo, cantidad menor o igual a cero,\
-            \ producto repetido, producto inexistente en Catalogo, o producto que\
-            \ ya esta en el pedido"
+          description: "VALIDATION_ERROR — lista vacia, elemento nulo, cantidad menor\
+            \ o igual a cero, producto repetido, producto inexistente en Catalogo,\
+            \ o producto que ya esta en el pedido"
           content:
             application/json:
               schema:
@@ -419,6 +536,78 @@ paths:
               examples:
                 DEPENDENCY_UNAVAILABLE:
                   $ref: "#/components/examples/DEPENDENCY_UNAVAILABLE"
+  /api/v1/orders/{id}/delivery:
+    post:
+      tags:
+      - Pedidos
+      summary: CU-10 — Solicitar asignacion logistica
+      description: |-
+        Pide a Logistica (INT-06) la entrega de un pedido CONFIRMADO. Pedidos no asigna repartidores: registra lo que responde Logistica y pasa el pedido a EN_PREPARACION.
+
+        Una solicitud repetida responde el pedido sin volver a llamar a Logistica. Declarado como mock: el contrato de Logistica pide ids int64 y los de Pedidos son UUID.
+      operationId: solicitarAsignacionLogistica
+      parameters:
+      - name: id
+        in: path
+        description: Identificador del pedido
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: X-Cliente-Id
+        in: header
+        description: "Identidad del cliente autenticado (RN-01). Provisoria: la reemplaza\
+          \ el JWT en la Etapa 4."
+        required: true
+        schema:
+          type: string
+          format: uuid
+        example: 11111111-1111-1111-1111-111111111111
+      responses:
+        "200":
+          description: Entrega solicitada; el pedido queda EN_PREPARACION
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/PedidoResponse"
+        "400":
+          description: VALIDATION_ERROR — identificador mal formado o falta la cabecera
+            X-Cliente-Id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                VALIDATION_ERROR:
+                  $ref: "#/components/examples/VALIDATION_ERROR"
+        "404":
+          description: ORDER_NOT_FOUND — el pedido no existe o es de otro cliente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                ORDER_NOT_FOUND:
+                  $ref: "#/components/examples/ORDER_NOT_FOUND"
+        "409":
+          description: ORDER_INVALID_STATE — el pedido no esta CONFIRMADO (RN-04)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                ORDER_INVALID_STATE:
+                  $ref: "#/components/examples/ORDER_INVALID_STATE"
+        "503":
+          description: DEPENDENCY_UNAVAILABLE — Logistica no responde (INT-06); el
+            pedido sigue CONFIRMADO
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                DEPENDENCY_UNAVAILABLE:
+                  $ref: "#/components/examples/DEPENDENCY_UNAVAILABLE"
   /api/v1/orders/{id}/confirm:
     post:
       tags:
@@ -427,7 +616,7 @@ paths:
       description: |-
         Revalida el pedido y lo cobra. Antes de pagar vuelve a preguntar a Usuarios por el cliente y la direccion (RN-01, RN-06, INT-02) y a Catalogo por la disponibilidad y el precio de cada linea (RN-05, RN-03, INT-01). Un pedido sin lineas no se confirma.
 
-        Con el cobro APROBADO (INT-03) se guarda el pagoId y el pedido pasa a CONFIRMADO en la misma transaccion. Con el cobro RECHAZADO el pedido sigue en BORRADOR, el intento queda en el historial y la respuesta es 422.
+        Inicia el pago en Pagos (INT-03) y guarda el pagoId. Pagos lo crea PENDIENTE y lo autoriza aparte, asi que el pedido sigue en BORRADOR con el intento en el historial; pasa a CONFIRMADO con CU-09 (POST /{id}/payment-result). Si Pagos lo aprobara en el acto, se confirma en la misma transaccion. Con el cobro RECHAZADO el pedido sigue en BORRADOR, el intento queda en el historial y la respuesta es 422.
       operationId: confirmarPedido
       parameters:
       - name: id
@@ -464,7 +653,8 @@ paths:
         required: true
       responses:
         "200":
-          description: Pedido confirmado y asociado al pago
+          description: "Pago iniciado (pedido en BORRADOR con pagoId) o, si Pagos\
+            \ lo aprobo en el acto, pedido CONFIRMADO"
           content:
             '*/*':
               schema:
@@ -524,6 +714,18 @@ paths:
               examples:
                 DEPENDENCY_UNAVAILABLE:
                   $ref: "#/components/examples/DEPENDENCY_UNAVAILABLE"
+  /status:
+    get:
+      tags:
+      - Status
+      summary: Devuelve 200 con el texto OK si el microservicio está funcionando
+      operationId: status
+      responses:
+        "200":
+          description: El servicio responde
+          content:
+            text/plain:
+              example: OK
   /api/v1/orders/{id}:
     get:
       tags:
@@ -660,11 +862,82 @@ paths:
               examples:
                 DEPENDENCY_UNAVAILABLE:
                   $ref: "#/components/examples/DEPENDENCY_UNAVAILABLE"
+  /api/v1/orders/{id}/price-check:
+    get:
+      tags:
+      - Pedidos
+      summary: CU-07 — Revalidar precios antes de confirmar
+      description: |-
+        Compara cada linea del borrador con Catalogo (INT-01) con la misma regla con la que CU-03 revalida antes de cobrar, pero no escribe nada: informa que lineas cambiaron de precio o ya no se venden, y el total al precio de hoy.
+
+        Para aceptar un precio nuevo, quitar la linea y volver a agregarla (CU-02).
+      operationId: revalidarPrecios
+      parameters:
+      - name: id
+        in: path
+        description: Identificador del pedido
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: X-Cliente-Id
+        in: header
+        description: "Identidad del cliente autenticado (RN-01). Provisoria: la reemplaza\
+          \ el JWT en la Etapa 4."
+        required: true
+        schema:
+          type: string
+          format: uuid
+        example: 11111111-1111-1111-1111-111111111111
+      responses:
+        "200":
+          description: Comparacion hecha; valido=false si algo cambio
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/RevalidacionPreciosResponse"
+        "400":
+          description: "VALIDATION_ERROR — el pedido no tiene items, o falta la cabecera\
+            \ X-Cliente-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                VALIDATION_ERROR:
+                  $ref: "#/components/examples/VALIDATION_ERROR"
+        "404":
+          description: ORDER_NOT_FOUND — el pedido no existe o es de otro cliente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                ORDER_NOT_FOUND:
+                  $ref: "#/components/examples/ORDER_NOT_FOUND"
+        "409":
+          description: ORDER_INVALID_STATE — el pedido ya no es un borrador (RN-04)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                ORDER_INVALID_STATE:
+                  $ref: "#/components/examples/ORDER_INVALID_STATE"
+        "503":
+          description: DEPENDENCY_UNAVAILABLE — Catalogo no responde (INT-01)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                DEPENDENCY_UNAVAILABLE:
+                  $ref: "#/components/examples/DEPENDENCY_UNAVAILABLE"
 components:
   schemas:
     ModificarCantidadItemRequest:
       type: object
-      description: Cantidad final de una linea del pedido (DTO-05)
+      description: Cantidad final de una linea del pedido (DTO-03b)
       properties:
         cantidad:
           type: integer
@@ -735,8 +1008,8 @@ components:
           type: string
           format: uuid
         productoId:
-          type: string
-          format: uuid
+          type: integer
+          format: int64
         nombreProducto:
           type: string
         cantidad:
@@ -756,8 +1029,8 @@ components:
           type: string
           format: uuid
         comercioId:
-          type: string
-          format: uuid
+          type: integer
+          format: int64
         direccionEntregaId:
           type: string
           format: uuid
@@ -796,8 +1069,8 @@ components:
       description: Datos minimos para abrir un pedido en BORRADOR (DTO-01)
       properties:
         comercioId:
-          type: string
-          format: uuid
+          type: integer
+          format: int64
           description: Comercio del pedido; todas sus lineas deben ser de este comercio
             (RN-02)
           example: 99999999-9999-9999-9999-999999999999
@@ -810,6 +1083,17 @@ components:
       required:
       - comercioId
       - direccionEntregaId
+    ResultadoPagoRequest:
+      type: object
+      description: Aviso de que un pago del pedido cambio de estado (DTO-09)
+      properties:
+        codigoPago:
+          type: string
+          format: uuid
+          description: Codigo del pago en Pagos (INT-05)
+          example: 7b1e2f3a-4c5d-4e6f-8a9b-0c1d2e3f4a5b
+      required:
+      - codigoPago
     AgregarItemsPedidoRequest:
       type: object
       description: Lineas nuevas de un pedido en BORRADOR (DTO-03)
@@ -827,8 +1111,8 @@ components:
       description: Producto y cantidad de una linea nueva
       properties:
         productoId:
-          type: string
-          format: uuid
+          type: integer
+          format: int64
           description: Producto de Catalogo (INT-01)
           example: 33333333-3333-3333-3333-333333333333
         cantidad:
@@ -851,6 +1135,85 @@ components:
           minLength: 1
       required:
       - medioPago
+    PaginaPedidosResponse:
+      type: object
+      properties:
+        pedidos:
+          type: array
+          items:
+            $ref: "#/components/schemas/PedidoResumenResponse"
+        pagina:
+          type: integer
+          format: int32
+        tamanio:
+          type: integer
+          format: int32
+        totalElementos:
+          type: integer
+          format: int64
+        totalPaginas:
+          type: integer
+          format: int32
+    PedidoResumenResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        comercioId:
+          type: integer
+          format: int64
+        estado:
+          type: string
+          enum:
+          - BORRADOR
+          - CONFIRMADO
+          - EN_PREPARACION
+          - EN_CAMINO
+          - ENTREGADO
+          - CANCELADO
+        total:
+          type: number
+        moneda:
+          type: string
+        fechaCreacion:
+          type: string
+          format: date-time
+    DiferenciaLinea:
+      type: object
+      description: Linea que ya no coincide con Catalogo
+      properties:
+        productoId:
+          type: integer
+          format: int64
+        precioGuardado:
+          type: number
+        precioVigente:
+          type: number
+        disponible:
+          type: boolean
+        motivo:
+          type: string
+          example: PRICE_CHANGED
+    RevalidacionPreciosResponse:
+      type: object
+      description: Resultado de comparar el borrador con Catalogo (DTO-07)
+      properties:
+        pedidoId:
+          type: string
+          format: uuid
+        valido:
+          type: boolean
+        totalGuardado:
+          type: number
+        totalVigente:
+          type: number
+        moneda:
+          type: string
+        diferencias:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiferenciaLinea"
   examples:
     VALIDATION_ERROR:
       summary: "Dato faltante o invalido; tambien cliente o direccion no validos (RN-01,\
@@ -920,6 +1283,16 @@ components:
         message: Pagos rechazo el cobro del pedido 3eaaefa8-b9e7-447f-9508-63035c0d874a;
           el pedido sigue en BORRADOR
         path: /api/v1/orders/3eaaefa8-b9e7-447f-9508-63035c0d874a/confirm
+        correlationId: 0affd3bd-9ef5-4fe2-9057-2f74cd3b179d
+    PAYMENT_MISMATCH:
+      summary: "CU-09: Pagos informa el pago para otro pedido, importe o moneda (INT-05)"
+      value:
+        timestamp: 2025-10-27T21:57:49.211Z
+        status: 422
+        code: PAYMENT_MISMATCH
+        message: El pago 7b1e2f3a-4c5d-4e6f-8a9b-0c1d2e3f4a5b no corresponde al pedido
+          3eaaefa8-b9e7-447f-9508-63035c0d874a
+        path: /api/v1/orders/3eaaefa8-b9e7-447f-9508-63035c0d874a/payment-result
         correlationId: 0affd3bd-9ef5-4fe2-9057-2f74cd3b179d
     DEPENDENCY_UNAVAILABLE:
       summary: "Catalogo, Usuarios o Pagos no respondio; nunca se sigue con un dato\

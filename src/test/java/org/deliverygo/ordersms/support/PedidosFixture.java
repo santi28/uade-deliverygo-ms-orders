@@ -87,6 +87,11 @@ public final class PedidosFixture {
         return new ProductoDto(id, COMERCIO, "Pizza muzzarella", precio, ESTADO_ACTIVO, disponible);
     }
 
+    /** RN-05 — Producto que Catalogo informa disponible pero despublicado: no se vende. */
+    public static ProductoDto productoInactivo(Long id) {
+        return new ProductoDto(id, COMERCIO, "Pizza muzzarella", PRECIO, "INACTIVO", true);
+    }
+
     /** Producto vendible: del comercio del pedido, disponible y al precio congelado. */
     public static ProductoDto productoVendible(Long id) {
         return producto(id, PRECIO, true);

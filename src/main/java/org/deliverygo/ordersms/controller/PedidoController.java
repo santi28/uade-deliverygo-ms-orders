@@ -20,6 +20,8 @@ import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ErrorResponse;
 import org.deliverygo.ordersms.dto.ModificarCantidadItemRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
+import org.deliverygo.ordersms.dto.ResultadoPagoRequest;
+import org.deliverygo.ordersms.dto.RevalidacionPreciosResponse;
 import org.deliverygo.ordersms.service.PedidoService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -40,7 +42,7 @@ import static org.deliverygo.ordersms.config.OpenApiConfig.REF_EJEMPLOS;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 /**
- * API-01 a API-05 — Endpoints HTTP de Pedidos.
+ * API-01 a API-10 — Endpoints HTTP de Pedidos (API-08 no existe: CU-08 es interno).
  *
  * <p>El controller solo traduce HTTP: las reglas de negocio viven en
  * {@link PedidoService}.
@@ -50,7 +52,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
  */
 @RestController
 @RequestMapping("/api/v1/orders")
-@Tag(name = "Pedidos", description = "Ciclo funcional de la compra (CU-01 a CU-05)")
+@Tag(name = "Pedidos", description = "Ciclo funcional de la compra (CU-01 a CU-10)")
 public class PedidoController {
 
     /** Identidad del cliente; provisoria hasta el JWT de la Etapa 4. */
@@ -352,11 +354,14 @@ public class PedidoController {
                     cliente y la direccion (RN-01, RN-06, INT-02) y a Catalogo por la disponibilidad y \
                     el precio de cada linea (RN-05, RN-03, INT-01). Un pedido sin lineas no se confirma.
 
-                    Con el cobro APROBADO (INT-03) se guarda el pagoId y el pedido pasa a CONFIRMADO en \
-                    la misma transaccion. Con el cobro RECHAZADO el pedido sigue en BORRADOR, el intento \
-                    queda en el historial y la respuesta es 422.""")
+                    Inicia el pago en Pagos (INT-03) y guarda el pagoId. Pagos lo crea PENDIENTE y lo \
+                    autoriza aparte, asi que el pedido sigue en BORRADOR con el intento en el historial; \
+                    pasa a CONFIRMADO con CU-09 (POST /{id}/payment-result). Si Pagos lo aprobara en el \
+                    acto, se confirma en la misma transaccion. Con el cobro RECHAZADO el pedido sigue en \
+                    BORRADOR, el intento queda en el historial y la respuesta es 422.""")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Pedido confirmado y asociado al pago"),
+            @ApiResponse(responseCode = "200", description = "Pago iniciado (pedido en BORRADOR con pagoId) o,"
+                    + " si Pagos lo aprobo en el acto, pedido CONFIRMADO"),
             @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — falta el medio de pago, el pedido"
                     + " no tiene items, o el cliente o la direccion ya no son validos (RN-01, RN-06)",
                     content = @Content(mediaType = APPLICATION_JSON_VALUE,
@@ -513,5 +518,148 @@ public class PedidoController {
             @RequestParam(defaultValue = "0") int pagina,
             @RequestParam(defaultValue = "20") int tamanio) {
         return pedidoService.listarPedidos(clienteId, pagina, tamanio);
+    }
+
+    /**
+     * API-07 — {@code GET /api/v1/orders/{id}/price-check} (CU-07): compara el borrador
+     * con Catalogo antes de confirmar, sin modificarlo.
+     *
+     * <p>Un precio distinto no es error: responde 200 con las diferencias.
+     */
+    @Operation(summary = "CU-07 — Revalidar precios antes de confirmar",
+            description = """
+                    Compara cada linea del borrador con Catalogo (INT-01) con la misma regla con la que \
+                    CU-03 revalida antes de cobrar, pero no escribe nada: informa que lineas cambiaron \
+                    de precio o ya no se venden, y el total al precio de hoy.
+
+                    Para aceptar un precio nuevo, quitar la linea y volver a agregarla (CU-02).""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Comparacion hecha; valido=false si algo cambio"),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — el pedido no tiene items, o falta"
+                    + " la cabecera X-Cliente-Id",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
+                    + " cliente",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_NOT_FOUND", ref = REF_EJEMPLOS + "ORDER_NOT_FOUND"))),
+            @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido ya no es un borrador"
+                    + " (RN-04)",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_INVALID_STATE", ref = REF_EJEMPLOS + "ORDER_INVALID_STATE"))),
+            @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Catalogo no responde (INT-01)",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
+    })
+    @GetMapping("/{id}/price-check")
+    public RevalidacionPreciosResponse revalidarPrecios(
+            @PathVariable
+            @Parameter(description = "Identificador del pedido") UUID id,
+            @RequestHeader(HEADER_CLIENTE)
+            @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
+            UUID clienteId) {
+        return pedidoService.revalidarPrecios(id, clienteId);
+    }
+
+    /**
+     * API-09 — {@code POST /api/v1/orders/{id}/payment-result} (CU-09): Pagos avisa que
+     * el pago del pedido cambio de estado y Pedidos aplica el resultado.
+     *
+     * <p>No pide {@code X-Cliente-Id}: el actor es el modulo Pagos. El cuerpo solo dice
+     * de que pago se trata; el resultado se consulta a Pagos (INT-05). Responde 200 con el
+     * pedido, haya cambiado o no, para que un aviso repetido no sea un error.
+     */
+    @Operation(summary = "CU-09 — Procesar resultado del pago",
+            description = """
+                    Lo llama Pagos cuando el pago del pedido cambia de estado. El aviso no se cree: \
+                    Pedidos consulta el pago a Pagos (INT-05) y aplica lo que responde.
+
+                    APROBADO pasa un BORRADOR a CONFIRMADO. RECHAZADO deja el BORRADOR y lo asienta en el \
+                    historial. PENDIENTE o REEMBOLSADO no cambian nada. Un aviso repetido responde el \
+                    pedido sin cambios. Un pedido CANCELADO no se reabre (RN-04).""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Resultado aplicado, o nada que aplicar"),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — falta codigoPago o no es el pago"
+                    + " del pedido",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_NOT_FOUND", ref = REF_EJEMPLOS + "ORDER_NOT_FOUND"))),
+            @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido no tiene pago iniciado,"
+                    + " o esta CANCELADO y el pago se aprobo (RN-04)",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_INVALID_STATE", ref = REF_EJEMPLOS + "ORDER_INVALID_STATE"))),
+            @ApiResponse(responseCode = "422", description = "PAYMENT_MISMATCH — Pagos no conoce el pago, o lo"
+                    + " informa para otro pedido, otro importe u otra moneda",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "PAYMENT_MISMATCH", ref = REF_EJEMPLOS + "PAYMENT_MISMATCH"))),
+            @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Pagos no responde (INT-05);"
+                    + " el pedido no cambia de estado",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
+    })
+    @PostMapping("/{id}/payment-result")
+    public PedidoResponse procesarResultadoPago(
+            @PathVariable
+            @Parameter(description = "Identificador del pedido") UUID id,
+            @Valid @RequestBody ResultadoPagoRequest request) {
+        return pedidoService.procesarResultadoPago(id, request);
+    }
+
+    /**
+     * API-10 — {@code POST /api/v1/orders/{id}/delivery} (CU-10): pide a Logistica la
+     * entrega de un pedido confirmado.
+     *
+     * <p>Sin cuerpo: los datos salen del pedido. Responde 200 con el pedido en
+     * EN_PREPARACION, tambien si la entrega ya se habia pedido.
+     */
+    @Operation(summary = "CU-10 — Solicitar asignacion logistica",
+            description = """
+                    Pide a Logistica (INT-06) la entrega de un pedido CONFIRMADO. Pedidos no asigna \
+                    repartidores: registra lo que responde Logistica y pasa el pedido a EN_PREPARACION.
+
+                    Una solicitud repetida responde el pedido sin volver a llamar a Logistica. \
+                    Declarado como mock: el contrato de Logistica pide ids int64 y los de Pedidos son UUID.""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Entrega solicitada; el pedido queda EN_PREPARACION"),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — identificador mal formado o falta"
+                    + " la cabecera X-Cliente-Id",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
+                    + " cliente",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_NOT_FOUND", ref = REF_EJEMPLOS + "ORDER_NOT_FOUND"))),
+            @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido no esta CONFIRMADO"
+                    + " (RN-04)",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_INVALID_STATE", ref = REF_EJEMPLOS + "ORDER_INVALID_STATE"))),
+            @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Logistica no responde"
+                    + " (INT-06); el pedido sigue CONFIRMADO",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
+    })
+    @PostMapping("/{id}/delivery")
+    public PedidoResponse solicitarAsignacionLogistica(
+            @PathVariable
+            @Parameter(description = "Identificador del pedido") UUID id,
+            @RequestHeader(HEADER_CLIENTE)
+            @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
+            UUID clienteId) {
+        return pedidoService.solicitarAsignacionLogistica(id, clienteId);
     }
 }

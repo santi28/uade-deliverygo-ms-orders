@@ -35,26 +35,33 @@ public class OpenApiConfig {
                         .title("DeliveryGo — Modulo Pedidos")
                         .version("v1")
                         .description("""
-                                Ciclo funcional de la compra: crear el pedido, cargar items, confirmarlo, \
-                                cancelarlo y consultarlo (CU-01 a CU-05).
+                                Ciclo funcional de la compra: crear el pedido, cargar items, revalidar \
+                                precios, confirmarlo, aplicar el resultado del pago, pedir la entrega, \
+                                cancelarlo, consultarlo y listarlo (CU-01 a CU-10; CU-08 es interno y se \
+                                ve en el historial de cada pedido).
 
                                 El modulo es dueño de Pedido, ItemPedido e HistorialEstado. Usuarios, \
                                 productos, pagos y entregas se referencian por ID y se validan por REST \
-                                (INT-01 a INT-04).
+                                (INT-01 a INT-06).
 
-                                Estado actual: los cinco CU CORE implementados, con las integraciones \
-                                respondiendo con mocks declarados (perfil distinto de `integracion`).
+                                El pago es asincronico: CU-03 lo inicia y deja el pedido en BORRADOR con el \
+                                pago PENDIENTE; CU-09 lo pasa a CONFIRMADO cuando Pagos lo aprueba.
+
+                                Sin el perfil `integracion` todas las integraciones responden con mocks \
+                                declarados. Usuarios (INT-02) y Logistica (INT-06) son mock en todos los \
+                                perfiles: no hay contrato compatible publicado.
 
                                 Datos de prueba de los mocks:
                                 * cliente activo `11111111-1111-1111-1111-111111111111`, direccion \
                                 `aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa`
                                 * cliente dado de baja `22222222-2222-2222-2222-222222222222` (RN-01)
-                                * comercios `99999999-…` (pizzeria) y `88888888-…` (kiosco)
-                                * productos de la pizzeria: pizza `33333333-…` (8500), empanada \
-                                `44444444-…` (1200) y helado `66666666-…` (sin stock, RN-05)
-                                * producto del kiosco: gaseosa `55555555-…` (sirve para RN-02)
-                                * Pagos rechaza los cobros de 100000 en adelante (12 pizzas alcanzan) \
-                                y reembolsa siempre
+                                * comercios `10` (pizzeria) y `20` (kiosco)
+                                * productos de la pizzeria: pizza `1` (8500), empanada `2` (1200) y \
+                                helado `4` (sin stock, RN-05)
+                                * producto del kiosco: gaseosa `3` (sirve para RN-02)
+                                * Pagos rechaza los cobros de 100000 en adelante (12 pizzas alcanzan), \
+                                aprueba al consultar (CU-09) los pagos que inicio y reembolsa siempre
+                                * Logistica asigna siempre (CU-10)
                                 """)
                         .contact(new Contact().name("Grupo 5 — Aplicaciones Interactivas (UADE)"))
                         .license(new License().name("Uso academico")))
@@ -91,6 +98,11 @@ public class OpenApiConfig {
                                         + "el pedido sigue en BORRADOR",
                                 "/api/v1/orders/3eaaefa8-b9e7-447f-9508-63035c0d874a/confirm",
                                 "Pagos rechazo el cobro, o no reembolso al cancelar"))
+                        .addExamples("PAYMENT_MISMATCH", ejemplo(422, "PAYMENT_MISMATCH",
+                                "El pago 7b1e2f3a-4c5d-4e6f-8a9b-0c1d2e3f4a5b no corresponde al pedido "
+                                        + "3eaaefa8-b9e7-447f-9508-63035c0d874a",
+                                "/api/v1/orders/3eaaefa8-b9e7-447f-9508-63035c0d874a/payment-result",
+                                "CU-09: Pagos informa el pago para otro pedido, importe o moneda (INT-05)"))
                         .addExamples("DEPENDENCY_UNAVAILABLE", ejemplo(503, "DEPENDENCY_UNAVAILABLE",
                                 "El modulo Catalogo no esta disponible",
                                 "/api/v1/orders/3eaaefa8-b9e7-447f-9508-63035c0d874a/items",

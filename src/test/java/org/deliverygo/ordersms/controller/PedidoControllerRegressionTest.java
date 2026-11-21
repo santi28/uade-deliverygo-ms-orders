@@ -170,6 +170,47 @@ class PedidoControllerRegressionTest {
         assertThat(consultarPersistido(pedidoId)).isEqualTo(antes);
     }
 
+    /**
+     * CU-03 + CU-09 con el mock de Pagos: confirmar deja el pago PENDIENTE y el pedido en
+     * BORRADOR; el aviso de Pagos lo pasa a CONFIRMADO, y repetirlo no cambia nada.
+     */
+    @Test
+    void elResultadoDelPagoConfirmaElPedidoUnaSolaVez() throws Exception {
+        UUID pedidoId = idDe(crearBorradorConEmpanada());
+
+        JsonNode iniciado = cuerpo(mvc.perform(post(PEDIDOS + "/{id}/confirm", pedidoId)
+                        .header(PedidoController.HEADER_CLIENTE, CLIENTE_ID)
+                        .contentType(APPLICATION_JSON)
+                        .content("{\"medioPago\": \"TARJETA_CREDITO\"}"))
+                .andExpect(status().isOk())
+                .andReturn());
+        assertThat(iniciado.path("estado").asText()).isEqualTo("BORRADOR");
+        String aviso = "{\"codigoPago\": \"" + iniciado.path("pagoId").asText() + "\"}";
+
+        JsonNode confirmado = avisarResultadoPago(pedidoId, aviso);
+        JsonNode repetido = avisarResultadoPago(pedidoId, aviso);
+
+        assertThat(confirmado.path("estado").asText()).isEqualTo("CONFIRMADO");
+        assertThat(repetido.path("historial")).isEqualTo(confirmado.path("historial"));
+        assertThat(consultarPersistido(pedidoId).path("estado").asText()).isEqualTo("CONFIRMADO");
+
+        // CU-10 con el mock de Logistica: el pedido confirmado pasa a EN_PREPARACION.
+        JsonNode enPreparacion = cuerpo(mvc.perform(post(PEDIDOS + "/{id}/delivery", pedidoId)
+                        .header(PedidoController.HEADER_CLIENTE, CLIENTE_ID))
+                .andExpect(status().isOk())
+                .andReturn());
+        assertThat(enPreparacion.path("estado").asText()).isEqualTo("EN_PREPARACION");
+        assertThat(consultarPersistido(pedidoId).path("estado").asText()).isEqualTo("EN_PREPARACION");
+    }
+
+    private JsonNode avisarResultadoPago(UUID pedidoId, String aviso) throws Exception {
+        return cuerpo(mvc.perform(post(PEDIDOS + "/{id}/payment-result", pedidoId)
+                        .contentType(APPLICATION_JSON)
+                        .content(aviso))
+                .andExpect(status().isOk())
+                .andReturn());
+    }
+
     private ResultActions solicitarCreacion() throws Exception {
         return mvc.perform(post(PEDIDOS)
                 .header(PedidoController.HEADER_CLIENTE, CLIENTE_ID)

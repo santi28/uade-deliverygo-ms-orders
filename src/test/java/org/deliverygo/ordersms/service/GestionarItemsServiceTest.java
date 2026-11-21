@@ -31,6 +31,7 @@ import static org.deliverygo.ordersms.support.PedidosFixture.borrador;
 import static org.deliverygo.ordersms.support.PedidosFixture.borradorConItem;
 import static org.deliverygo.ordersms.support.PedidosFixture.enEstado;
 import static org.deliverygo.ordersms.support.PedidosFixture.producto;
+import static org.deliverygo.ordersms.support.PedidosFixture.productoInactivo;
 import static org.deliverygo.ordersms.support.PedidosFixture.productoDeOtroComercio;
 import static org.deliverygo.ordersms.support.PedidosFixture.productoVendible;
 import static org.mockito.BDDMockito.given;
@@ -132,6 +133,20 @@ class GestionarItemsServiceTest extends PedidoServiceTestBase {
                 () -> service.agregarItems(PEDIDO_ID, CLIENTE, alta(new LineaItem(OTRO_PRODUCTO, 1))));
 
         assertThat(codigoDe(error)).isEqualTo(CodigoError.MIXED_MERCHANT);
+        assertThat(pedido.getItems()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("API-02, RN-05: un producto disponible pero INACTIVO en Catalogo corta con PRODUCT_UNAVAILABLE")
+    void agregarRechazaProductoInactivo() {
+        Pedido pedido = borrador();
+        given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(pedido));
+        given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoInactivo(PRODUCTO)));
+
+        Throwable error = catchThrowable(
+                () -> service.agregarItems(PEDIDO_ID, CLIENTE, alta(new LineaItem(PRODUCTO, 1))));
+
+        assertThat(codigoDe(error)).isEqualTo(CodigoError.PRODUCT_UNAVAILABLE);
         assertThat(pedido.getItems()).isEmpty();
     }
 

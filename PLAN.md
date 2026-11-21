@@ -15,16 +15,24 @@ Pedidos orquesta el ciclo funcional de la compra. Es dueño de `Pedido`, `ItemPe
 | CU-02 | Modificar la cantidad de un ítem | `PUT /api/v1/orders/{id}/items/{productoId}` | `modificarCantidadItem()` |
 | CU-02 | Eliminar un ítem | `DELETE /api/v1/orders/{id}/items/{productoId}` | `quitarItem()` |
 | CU-03 | Confirmar pedido | `POST /api/v1/orders/{id}/confirm` | `confirmarPedido()` |
-| CU-04 | Cancelar pedido | `DELETE /api/v1/orders/{id}/cancel` | `cancelarPedido()` |
+| CU-04 | Cancelar pedido | `DELETE /api/v1/orders/{id}` | `cancelarPedido()` |
 | CU-05 | Consultar pedido y estado | `GET /api/v1/orders/{id}` | `consultarPedido()` |
 
-Evolución (solo si sobra tiempo): CU-06 listar pedidos del usuario, CU-10 solicitar asignación a Logística.
+**CU evolutivos (alcance de la entrega final, ver Etapa 6):**
+
+| CU | Nombre | Endpoint | Servicio |
+| --- | --- | --- | --- |
+| CU-06 | Listar pedidos del usuario | `GET /api/v1/orders` | SRV-06 `listarPedidos()` |
+| CU-07 | Revalidar precios antes de confirmar | `GET /api/v1/orders/{id}/price-check` | SRV-07 `revalidarPrecios()` |
+| CU-08 | Registrar transición e historial | — (interno) | SRV-08 `registrarTransicion()` |
+| CU-09 | Procesar resultado del pago | `POST /api/v1/orders/{id}/payment-result` | SRV-09 `procesarResultadoPago()` |
+| CU-10 | Solicitar asignación logística | `POST /api/v1/orders/{id}/delivery` | SRV-10 `solicitarAsignacionLogistica()` |
 
 **Desvío registrado — CU-02 abierto en tres endpoints (27/10)**
 
 La planilla define CU-02 como un único `POST /api/v1/orders/{id}/items` que recibía la cantidad final de cada línea y usaba `cantidad = 0` para quitarla. Por pedido del equipo se partió en un verbo por operación: `POST` da de alta, `PUT` cambia la cantidad de una línea y `DELETE` la saca. El CU, la regla de negocio y el `HistorialEstado` son los mismos; cambian la API (API-02, API-02b, API-02c) y los DTOs.
 
-Qué hay que corregir en la planilla: la ficha de CU-02, API-02, SEC-02 y el diagrama de secuencia, y DTO-03 (que ya no lleva cantidad 0 y ahora exige cantidad mayor a cero). `ModificarItemsPedidoRequest` quedó reemplazado por `AgregarItemsPedidoRequest` (DTO-03) y `ModificarCantidadItemRequest` (DTO-05).
+Qué hay que corregir en la planilla: la ficha de CU-02, API-02, SEC-02 y el diagrama de secuencia, y DTO-03 (que ya no lleva cantidad 0 y ahora exige cantidad mayor a cero). `ModificarItemsPedidoRequest` quedó reemplazado por `AgregarItemsPedidoRequest` (DTO-03) y `ModificarCantidadItemRequest` (DTO-03b; en el código figuraba como DTO-05, que en la planilla es `ErrorResponse`).
 
 Decisiones que trajo el cambio, a confirmar con el docente:
 
@@ -76,9 +84,12 @@ com.deliverygo.pedidos
   repository/   PedidoRepository, HistorialEstadoRepository
   domain/       Pedido, ItemPedido, HistorialEstado, EstadoPedido
   dto/          CrearPedidoRequest, AgregarItemsPedidoRequest, ModificarCantidadItemRequest,
-                ConfirmarPedidoRequest, PedidoResponse, ErrorResponse
+                ConfirmarPedidoRequest, PedidoResponse, ErrorResponse,
+                PaginaPedidosResponse, PedidoResumenResponse (CU-06),
+                RevalidacionPreciosResponse (CU-07), ResultadoPagoRequest (CU-09)
   mapper/       PedidoMapper
-  client/       CatalogoClient, UsuariosClient, PagosClient (+ impl mock y http) y client/dto
+  client/       CatalogoClient, UsuariosClient, PagosClient, LogisticaClient (CU-10)
+                (+ impl mock y http) y client/dto
   exception/    GlobalExceptionHandler, PedidoNotFoundException, EstadoInvalidoException, ReglaNegocioException
   config/       OpenApiConfig, RestClientConfig
 ```
@@ -88,11 +99,12 @@ com.deliverygo.pedidos
 | Desde | Hacia | Disparador |
 | --- | --- | --- |
 | BORRADOR | BORRADOR | CU-02 modificar ítems |
-| BORRADOR | CONFIRMADO | CU-03 con pago APROBADO |
-| BORRADOR | BORRADOR | CU-03 con pago RECHAZADO (DM-07) |
+| BORRADOR | CONFIRMADO | CU-03 con pago APROBADO; CU-09 cuando Pagos informa APROBADO |
+| BORRADOR | BORRADOR | CU-03 con pago RECHAZADO o PENDIENTE (DM-07); CU-09 con pago RECHAZADO |
 | BORRADOR | CANCELADO | CU-04, sin reembolso |
 | CONFIRMADO | CANCELADO | CU-04, solo si el reembolso responde REEMBOLSADO |
-| CONFIRMADO | EN_PREPARACION / EN_CAMINO / ENTREGADO | Evolución (Logística), fuera de CORE |
+| CONFIRMADO | EN_PREPARACION | CU-10, Logística registró la entrega |
+| EN_PREPARACION | EN_CAMINO / ENTREGADO | Logística; fuera del alcance (no hay aviso de Logística a Pedidos) |
 
 Cualquier otra transición → `ORDER_INVALID_STATE` y no se persiste nada.
 
@@ -104,8 +116,9 @@ Cualquier otra transición → `ORDER_INVALID_STATE` y no se persiste nada.
 | REP-02 | `PedidoRepository.findByIdConItems` (JOIN FETCH) — pedido + ítems | CU-02, CU-03 |
 | REP-03 | `PedidoRepository.findByIdAndClienteId` — pedido verificando dueño | CU-04, CU-05 |
 | REP-04 | `HistorialEstadoRepository.findByPedidoIdOrderByFechaCambioAsc` | CU-05 |
+| REP-06 | `PedidoRepository.findByClienteId(UUID, Pageable)` — página de pedidos del cliente | CU-06 |
 
-No existen REP-05 ni `ItemPedidoRepository`.
+No existen REP-05 ni `ItemPedidoRepository`. CU-07 usa REP-02, CU-09 y CU-10 usan REP-03 o el `findById` heredado de `JpaRepository` (sin consulta propia).
 
 **Integraciones**
 
@@ -115,6 +128,8 @@ No existen REP-05 ni `ItemPedidoRepository`.
 | INT-02 | Usuarios (Eq. 1) | `GET /api/v1/users/{id}` (+ direcciones) | CU-01, 03 | 503; no crear ni confirmar |
 | INT-03 | Pagos (Eq. 4) | `POST /api/v1/payments` | CU-03 | Pedido sigue en BORRADOR |
 | INT-04 | Pagos (Eq. 4) | `POST /api/v1/payments/{pagoId}/refund` | CU-04 | Pedido no cambia de estado |
+| INT-05 | Pagos (Eq. 4) | `GET /api/v1/payments/{codigoPago}` | CU-09 | 503; el pedido no cambia de estado |
+| INT-06 | Logística | `POST /api/v1/deliveries/assign` | CU-10 | 503; el pedido sigue CONFIRMADO |
 
 Todas: timeout 2–3 s, propagar `Authorization` y `X-Correlation-Id`.
 
@@ -137,7 +152,8 @@ Todas: timeout 2–3 s, propagar `Authorization` y `X-Correlation-Id`.
 | PRODUCT_UNAVAILABLE | 422 | Producto inactivo o sin stock (RN-05) |
 | PRICE_CHANGED | 422 | Precio distinto al confirmar (RN-03) |
 | PAYMENT_REJECTED | 422 | Pagos rechazó |
-| DEPENDENCY_UNAVAILABLE | 503 | Catálogo, Usuarios o Pagos no responde |
+| PAYMENT_MISMATCH | 422 | CU-09: el pago que informa Pagos no corresponde al pedido (otro pedido, otro importe u otra moneda, o no existe) |
+| DEPENDENCY_UNAVAILABLE | 503 | Catálogo, Usuarios, Pagos o Logística no responde |
 
 \* La consigna usa 409 para conflicto de estado, pero su ejemplo muestra `ORDER_INVALID_STATE` con 422. Pendiente de confirmar con el docente.
 
@@ -294,7 +310,7 @@ Qué hay que corregir en la planilla: la ficha de CU-03, API-03, SEC-03, el diag
 **Objetivo:** demo estable y todos pueden explicar cualquier parte.
 
 - [ ] Matriz de trazabilidad revisada contra el código mergeado
-- [ ] README, de cero y completo (descripción, integrantes, tecnologías, ejecución con `docker compose` y perfiles, variables de entorno, endpoints, integraciones, datos de prueba, limitaciones)
+- [x] README, de cero y completo (descripción, integrantes, tecnologías, ejecución con `docker compose` y perfiles, variables de entorno, endpoints, integraciones, datos de prueba, limitaciones). Pendiente: verificar `docker compose up --build` en una máquina limpia, como pide la salida de la Etapa 3
 - [ ] Acta de decisiones técnicas actualizada
 - [ ] Guion de demo: caso principal, 3 integraciones, un error controlado
 - [ ] Ronda cruzada: cada integrante explica un CU que no programó
@@ -350,5 +366,53 @@ Que hay que corregir en la planilla: nada mientras el interruptor este apagado. 
 - [ ] Ninguna consulta a datos de otro módulo; solo IDs y snapshots
 - [ ] PR revisado y mergeado; trazabilidad actualizada si algo cambió
 
-## CU-06: listado paginado
-SRV-06/API-06 GET /api/v1/orders: listado paginado por cliente. REP-06 findByClienteId(UUID, Pageable); DTO-06 PaginaPedidosResponse/PedidoResumenResponse. Página base cero, tamaño 1..100, orden fechaCreacion DESC e id DESC.
+### Etapa 6 — CU evolutivos para la entrega final · 21/11
+
+**Objetivo:** los 10 CU de la planilla implementados. La planilla documenta CU-06 a CU-10 sin API ni DTO propios ("CU evolutivo"); lo que sigue es el diseño que se agrega y que hay que pasar a la planilla.
+
+Orden, por importancia: CU-09 (sin él ningún pedido llega a CONFIRMADO con Pagos real), CU-07, CU-08, CU-10.
+
+- [x] CU-06 listar pedidos (SRV-06, API-06, REP-06, DTO-06)
+- [x] CU-09 procesar resultado del pago (SRV-09, API-09, DTO-09, INT-05) — `ProcesarResultadoPagoServiceTest` (15), INT-05 en `PagosClientHttpTest`, API-09 en `PedidoControllerTest` y el flujo confirmar → aviso → CONFIRMADO en `PedidoControllerRegressionTest`. Falta probar INT-05 contra Pagos levantado
+- [x] CU-07 revalidar precios (SRV-07, API-07, DTO-07) — `RevalidarPreciosServiceTest` (10) y API-07 en `PedidoControllerTest`
+- [x] CU-08 registrar transición (SRV-08) — `registrarTransicion()` en `PedidoService`; CU-01 también pasa por ahí. `RegistrarTransicionServiceTest` (3)
+- [x] Corrección de RN-05: CU-02, CU-03 y CU-07 usaban solo `disponible()` y no `ProductoDto.vendible()` (desvío #4 del 03/11). Un producto INACTIVO pero disponible se podía pedir
+- [x] CU-10 asignación logística (SRV-10, API-10, INT-06) — con `LogisticaClientMock` declarado (activo en todos los perfiles, como el de Usuarios) hasta resolver el contrato. `SolicitarAsignacionLogisticaServiceTest` (7), API-10 en `PedidoControllerTest` y el flujo completo hasta EN_PREPARACION en `PedidoControllerRegressionTest`
+- [x] Postman y Swagger con los CU nuevos — la colección pasa de 40 a 60 requests (CU-06, CU-07, CU-09, CU-10) y se corrió entera contra la app con el perfil `test`, dos veces sobre la misma base, sin fallas. Se corrigieron dos casos que estaban rotos desde antes: CU-03 esperaba CONFIRMADO (desde el 03/11 el pago queda PENDIENTE y confirma CU-09) y REP-01 esperaba 201 al reutilizar el borrador (responde 200). `doc/openapi.yaml` regenerado, con la portada de Swagger actualizada (CU-01 a CU-10, pago asincrónico, ids `Long` de Catálogo)
+- [x] Planilla: fichas CU-06 a CU-10 con API/DTO, SEC-06 a SEC-10, matriz de trazabilidad — copia `TPO_DeliveryGo_Pedidos_Entrega_Final.docx` (v1.0), hecha sobre la planilla devuelta. Además de los evolutivos se pusieron al día las fichas CU-01 a CU-05 (CU-02 en tres endpoints, CU-03 con pago asincrónico, CU-04 con INT-04 y DELETE), SEC-01 a SEC-05 (REP normalizados, sin `ItemPedidoRepository` ni REP-05), DM-07, DM-08, DM-09 nueva y las secciones 9 a 13 (REP-03 corregido, REP-06, SRV/API/INT/DTO). `ModificarCantidadItemRequest` pasa a DTO-03b: DTO-05 es `ErrorResponse`
+- [ ] Planilla: redibujar los diagramas SEC-01 a SEC-05 (las imágenes siguen mostrando REP-04/REP-05, `ItemPedidoRepository` y el pago sincrónico) y dibujar SEC-06, SEC-07, SEC-09 y SEC-10 (hay una marca "pendiente de dibujar" en cada una)
+- [ ] Planilla: fecha de entrega de la portada y sección 1 (sigue hablando de la primera entrega)
+
+**CU-06 — Listar pedidos.** SRV-06/API-06 `GET /api/v1/orders`: listado paginado por cliente. REP-06 `findByClienteId(UUID, Pageable)`; DTO-06 `PaginaPedidosResponse` / `PedidoResumenResponse`. Página base cero, tamaño 1..100, orden `fechaCreacion` DESC e `id` DESC. Sin pedidos: 200 con lista vacía. Parámetros fuera de rango: 400.
+
+**CU-07 — Revalidar precios.** SRV-07 `revalidarPrecios()` es la revalidación que hoy hace CU-03 por dentro (`revalidarLineasContraCatalogo`), extraída como servicio propio. CU-03 la sigue usando y corta con `PRICE_CHANGED` / `PRODUCT_UNAVAILABLE` / `MIXED_MERCHANT` como hasta ahora.
+
+- API-07 `GET /api/v1/orders/{id}/price-check` (con `X-Cliente-Id`): **solo informa**, no escribe nada. Responde 200 con DTO-07 `RevalidacionPreciosResponse { pedidoId, valido, totalGuardado, totalVigente, moneda, diferencias[] }`, cada diferencia `{ productoId, precioGuardado, precioVigente, disponible, motivo }`. `motivo` es el código con el que CU-03 cortaría (`PRICE_CHANGED`, `PRODUCT_UNAVAILABLE`, `MIXED_MERCHANT`) y `precioVigente` es nulo si el producto ya no está en Catálogo. `totalVigente` suma al precio de hoy solo las líneas que se siguen vendiendo. Un precio distinto no es error en este endpoint: es el resultado. Mismas precondiciones que editar: solo un BORRADOR con ítems (si no, 409 o 400).
+- La regla por línea (`revalidarLinea`) es una sola y la comparten CU-03, que corta en la primera diferencia, y API-07, que las informa todas.
+- La planilla deja la "aceptación explícita" del precio nuevo por acordar. No se agrega un endpoint de aceptación: el cliente acepta quitando la línea y volviéndola a agregar con CU-02, que congela el precio vigente. Sin sobrescritura silenciosa.
+- Catálogo caído: 503, nunca un precio supuesto (INT-01). Usa REP-02.
+
+**CU-08 — Registrar transición.** SRV-08 `registrarTransicion()` es el punto único por el que todo CU cambia el estado y deja la entrada en `HistorialEstado`: hoy es el `transicionar()` privado de `PedidoService` sobre `MaquinaEstados`. Se le pone ID y se documenta; no tiene API (actor interno). Estado e historial se guardan en la misma transacción del CU (DM-06). El paso 5 de la ficha ("comunicar a Analítica") **queda fuera**: el ecosistema solo publica `GET /api/v1/analytics/dashboard`, no hay endpoint para enviarle eventos.
+
+**CU-09 — Procesar resultado del pago.** Es lo que el desvío del 03/11 dejó pendiente: Pagos crea el pago en PENDIENTE y lo autoriza en un CU suyo (`/approve`), así que alguien tiene que avisarnos.
+
+- API-09 `POST /api/v1/orders/{id}/payment-result`, cuerpo DTO-09 `ResultadoPagoRequest { codigoPago }`. Responde 200 con el pedido completo (`PedidoResponse`).
+- **No se le cree al cuerpo.** El aviso solo dispara la consulta: el resultado se lee de Pagos con INT-05 `GET /api/v1/payments/{codigoPago}`. Así se cumple "verificar origen" de la ficha sin firmar mensajes: aunque cualquiera llame al endpoint, lo único que logra es que Pedidos se sincronice con lo que Pagos dice. Por eso **no pide `X-Cliente-Id`**: el actor es el módulo Pagos, que no tiene cliente.
+- Correlación (paso 2): `codigoPago` tiene que ser el `pagoId` del pedido (si no, 400 `VALIDATION_ERROR`); el pago que devuelve Pagos tiene que ser de este pedido, por el total y en la moneda del pedido (si no, o si Pagos responde 404, 422 `PAYMENT_MISMATCH`). Un pedido sin pago iniciado responde 409 `ORDER_INVALID_STATE`.
+- Resultado según el estado del pago:
+
+| Pago | Pedido BORRADOR | Pedido CONFIRMADO | Pedido CANCELADO |
+| --- | --- | --- | --- |
+| APROBADO | → CONFIRMADO + historial | 200 sin cambios (duplicado) | 409, no se reabre |
+| RECHAZADO | sigue BORRADOR, historial una sola vez | 200 sin cambios | 200 sin cambios |
+| PENDIENTE / REEMBOLSADO | 200 sin cambios | 200 sin cambios | 200 sin cambios |
+
+- Idempotencia (paso 3): el duplicado no deja una segunda entrada en el historial. Un CONFIRMADO responde sin consultar a Pagos.
+- Respeta el interruptor de RN-04: prendido, un APROBADO sobre un CANCELADO lo pasa a CONFIRMADO con el motivo marcado.
+- El mock de Pagos recuerda los pagos que inició y al consultarlos devuelve APROBADO los que nacieron PENDIENTE (simula el `/approve` de Pagos) y RECHAZADO los rechazados. Declarado como mock.
+
+**CU-10 — Solicitar asignación logística.** SRV-10 `solicitarAsignacionLogistica()`, API-10 `POST /api/v1/orders/{id}/delivery` (con `X-Cliente-Id`), INT-06 `POST /api/v1/deliveries/assign`. Solo un CONFIRMADO; Logística responde 201 (ASIGNADA) o 202 (PENDIENTE_ASIGNACION) y en los dos casos el pedido pasa a EN_PREPARACION, porque la entrega ya existe en Logística. Logística caída: 503 y el pedido sigue CONFIRMADO (nunca se desconfirma). Un pedido ya EN_PREPARACION responde 200 sin repetir la solicitud. Se dispara a mano y no al confirmar, para no acoplar la confirmación a la disponibilidad de Logística. El id y el estado de la entrega quedan en el motivo del historial; `Pedido` no guarda un `entregaId` (igual que DM-09 con el pago), así que no hubo cambio de esquema. **Un pedido EN_PREPARACION ya no se cancela con CU-04** (409): la entrega está en curso en Logística y no hay contrato para cancelarla. Con el interruptor de RN-04 prendido, sí se cancela.
+
+**Conflicto de contrato con Logística, a resolver con el equipo de Logística y avisar al docente:** `AsignarEntregaRequest` pide `pedidoId` y `clienteId` como `int64`, y los nuestros son UUID. También pide `direccionEntrega` y `direccionRetiro` en texto, y en el ecosistema nadie expone direcciones (ver desvío de INT-02). Hasta resolverlo, `LogisticaClient` tiene solo el mock, declarado como mock; el cliente HTTP se escribe cuando se cierre el contrato.
+
+**Decisiones a avisar al docente:** CU-09 por consulta a Pagos en lugar de webhook firmado; el código nuevo `PAYMENT_MISMATCH`; CU-07 sin endpoint de aceptación; CU-08 sin Analítica; CU-10 con mock por el choque de IDs; un pedido EN_PREPARACION no se cancela.
