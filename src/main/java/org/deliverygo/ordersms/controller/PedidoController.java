@@ -42,7 +42,7 @@ import static org.deliverygo.ordersms.config.OpenApiConfig.REF_EJEMPLOS;
 import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
 
 /**
- * API-01 a API-05 — Endpoints HTTP de Pedidos.
+ * API-01 a API-10 — Endpoints HTTP de Pedidos (API-08 no existe: CU-08 es interno).
  *
  * <p>El controller solo traduce HTTP: las reglas de negocio viven en
  * {@link PedidoService}.
@@ -52,7 +52,7 @@ import static org.springframework.http.MediaType.APPLICATION_JSON_VALUE;
  */
 @RestController
 @RequestMapping("/api/v1/orders")
-@Tag(name = "Pedidos", description = "Ciclo funcional de la compra (CU-01 a CU-05)")
+@Tag(name = "Pedidos", description = "Ciclo funcional de la compra (CU-01 a CU-10)")
 public class PedidoController {
 
     /** Identidad del cliente; provisoria hasta el JWT de la Etapa 4. */
@@ -611,5 +611,52 @@ public class PedidoController {
             @Parameter(description = "Identificador del pedido") UUID id,
             @Valid @RequestBody ResultadoPagoRequest request) {
         return pedidoService.procesarResultadoPago(id, request);
+    }
+
+    /**
+     * API-10 — {@code POST /api/v1/orders/{id}/delivery} (CU-10): pide a Logistica la
+     * entrega de un pedido confirmado.
+     *
+     * <p>Sin cuerpo: los datos salen del pedido. Responde 200 con el pedido en
+     * EN_PREPARACION, tambien si la entrega ya se habia pedido.
+     */
+    @Operation(summary = "CU-10 — Solicitar asignacion logistica",
+            description = """
+                    Pide a Logistica (INT-06) la entrega de un pedido CONFIRMADO. Pedidos no asigna \
+                    repartidores: registra lo que responde Logistica y pasa el pedido a EN_PREPARACION.
+
+                    Una solicitud repetida responde el pedido sin volver a llamar a Logistica. \
+                    Declarado como mock: el contrato de Logistica pide ids int64 y los de Pedidos son UUID.""")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Entrega solicitada; el pedido queda EN_PREPARACION"),
+            @ApiResponse(responseCode = "400", description = "VALIDATION_ERROR — identificador mal formado o falta"
+                    + " la cabecera X-Cliente-Id",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "VALIDATION_ERROR", ref = REF_EJEMPLOS + "VALIDATION_ERROR"))),
+            @ApiResponse(responseCode = "404", description = "ORDER_NOT_FOUND — el pedido no existe o es de otro"
+                    + " cliente",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_NOT_FOUND", ref = REF_EJEMPLOS + "ORDER_NOT_FOUND"))),
+            @ApiResponse(responseCode = "409", description = "ORDER_INVALID_STATE — el pedido no esta CONFIRMADO"
+                    + " (RN-04)",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "ORDER_INVALID_STATE", ref = REF_EJEMPLOS + "ORDER_INVALID_STATE"))),
+            @ApiResponse(responseCode = "503", description = "DEPENDENCY_UNAVAILABLE — Logistica no responde"
+                    + " (INT-06); el pedido sigue CONFIRMADO",
+                    content = @Content(mediaType = APPLICATION_JSON_VALUE,
+                            schema = @Schema(implementation = ErrorResponse.class),
+                            examples = @ExampleObject(name = "DEPENDENCY_UNAVAILABLE", ref = REF_EJEMPLOS + "DEPENDENCY_UNAVAILABLE")))
+    })
+    @PostMapping("/{id}/delivery")
+    public PedidoResponse solicitarAsignacionLogistica(
+            @PathVariable
+            @Parameter(description = "Identificador del pedido") UUID id,
+            @RequestHeader(HEADER_CLIENTE)
+            @Parameter(description = DESCRIPCION_CLIENTE, example = "11111111-1111-1111-1111-111111111111")
+            UUID clienteId) {
+        return pedidoService.solicitarAsignacionLogistica(id, clienteId);
     }
 }

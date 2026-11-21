@@ -7,12 +7,15 @@ import org.springframework.data.domain.PageRequest;
 import java.util.Objects;
 
 import org.deliverygo.ordersms.client.CatalogoClient;
+import org.deliverygo.ordersms.client.LogisticaClient;
 import org.deliverygo.ordersms.client.PagosClient;
 import org.deliverygo.ordersms.client.UsuariosClient;
+import org.deliverygo.ordersms.client.dto.EntregaDto;
 import org.deliverygo.ordersms.client.dto.EstadoPago;
 import org.deliverygo.ordersms.client.dto.PagoDto;
 import org.deliverygo.ordersms.client.dto.ProductoDto;
 import org.deliverygo.ordersms.client.dto.ReembolsoDto;
+import org.deliverygo.ordersms.client.dto.SolicitudEntregaDto;
 import org.deliverygo.ordersms.client.dto.SolicitudPagoDto;
 import org.deliverygo.ordersms.client.dto.UsuarioDto;
 import org.deliverygo.ordersms.dto.AgregarItemsPedidoRequest;
@@ -51,8 +54,8 @@ import java.util.UUID;
  * Servicio de Pedidos: concentra las reglas de negocio de los CU CORE.
  *
  * <p>Cubre los cinco CU CORE: SRV-01 (CU-01), SRV-02 (CU-02), SRV-03 (CU-03), SRV-04
- * (CU-04) y SRV-05 (CU-05), y los evolutivos SRV-06 (CU-06), SRV-07 (CU-07), SRV-08 (CU-08) y SRV-09
- * (CU-09).
+ * (CU-04) y SRV-05 (CU-05), y los evolutivos SRV-06 (CU-06), SRV-07 (CU-07), SRV-08 (CU-08), SRV-09
+ * (CU-09) y SRV-10 (CU-10).
  */
 @Service
 public class PedidoService {
@@ -88,6 +91,7 @@ public class PedidoService {
     private final UsuariosClient usuariosClient;
     private final CatalogoClient catalogoClient;
     private final PagosClient pagosClient;
+    private final LogisticaClient logisticaClient;
     private final MaquinaEstados maquinaEstados;
     private final PedidoMapper pedidoMapper;
 
@@ -99,6 +103,7 @@ public class PedidoService {
 
     public PedidoService(PedidoRepository pedidoRepository, HistorialEstadoRepository historialEstadoRepository,
             UsuariosClient usuariosClient, CatalogoClient catalogoClient, PagosClient pagosClient,
+            LogisticaClient logisticaClient,
             MaquinaEstados maquinaEstados, PedidoMapper pedidoMapper,
             PlatformTransactionManager transactionManager) {
         this.pedidoRepository = pedidoRepository;
@@ -106,6 +111,7 @@ public class PedidoService {
         this.usuariosClient = usuariosClient;
         this.catalogoClient = catalogoClient;
         this.pagosClient = pagosClient;
+        this.logisticaClient = logisticaClient;
         this.maquinaEstados = maquinaEstados;
         this.pedidoMapper = pedidoMapper;
         this.transaccionIndependiente = new TransactionTemplate(transactionManager);
@@ -510,6 +516,42 @@ public class PedidoService {
                 registrarTransicion(pedido, EstadoPedido.BORRADOR, motivo);
             }
         }
+
+        return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+    }
+
+    /**
+     * SRV-10 — CU-10: pide a Logistica la entrega de un pedido confirmado.
+     *
+     * <p>Pedidos no asigna repartidores: hace la solicitud por INT-06 y registra lo que
+     * responde. Tanto ASIGNADA como PENDIENTE_ASIGNACION pasan el pedido a EN_PREPARACION,
+     * porque en los dos casos la entrega ya existe en Logistica. El id y el estado de la
+     * entrega quedan en el motivo del historial; el pedido no los guarda (DM-09).
+     *
+     * <p>Solo un CONFIRMADO (RN-04): un borrador o un cancelado responden
+     * ORDER_INVALID_STATE sin llamar a Logistica. Un pedido ya EN_PREPARACION responde sin
+     * repetir la solicitud. Si Logistica no responde, 503 y el pedido sigue CONFIRMADO:
+     * nunca se desconfirma por falta de repartidores.
+     */
+    @Transactional
+    public PedidoResponse solicitarAsignacionLogistica(UUID pedidoId, UUID clienteId) {
+        // REP-03: pedido verificando el titular.
+        Pedido pedido = pedidoRepository.findByIdAndClienteId(pedidoId, clienteId)
+                .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
+
+        // Solicitud repetida: la entrega ya se pidio.
+        if (pedido.getEstado() == EstadoPedido.EN_PREPARACION) {
+            return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+        }
+
+        validarEstado(pedido.getEstado(), EstadoPedido.EN_PREPARACION);
+
+        // INT-06: si Logistica no responde, la excepcion sale sin tocar el pedido.
+        EntregaDto entrega = logisticaClient.solicitarAsignacion(new SolicitudEntregaDto(
+                pedido.getId(), pedido.getClienteId(), pedido.getComercioId(), pedido.getDireccionEntregaId()));
+
+        registrarTransicion(pedido, EstadoPedido.EN_PREPARACION,
+                "CU-10: entrega " + entrega.id() + " " + entrega.estado() + " en Logistica");
 
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
     }

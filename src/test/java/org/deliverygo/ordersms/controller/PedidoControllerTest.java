@@ -250,6 +250,27 @@ class PedidoControllerTest {
     }
 
     @Test
+    @DisplayName("API-10: solicitar la entrega responde 200 con el pedido EN_PREPARACION")
+    void solicitarEntregaResponde200() throws Exception {
+        given(pedidoService.solicitarAsignacionLogistica(PEDIDO_ID, CLIENTE))
+                .willReturn(respuestaDe(enEstado(EstadoPedido.CONFIRMADO, PAGO_ID)));
+
+        mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/delivery")
+                        .header(PedidoController.HEADER_CLIENTE, CLIENTE))
+                .andExpect(status().isOk());
+
+        verify(pedidoService).solicitarAsignacionLogistica(PEDIDO_ID, CLIENTE);
+    }
+
+    @Test
+    @DisplayName("400, API-10: solicitar la entrega exige la identidad del cliente")
+    void solicitarEntregaSinCliente() throws Exception {
+        mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/delivery"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
     @DisplayName("400, DTO-09: el codigo de pago es obligatorio")
     void rechazaResultadoPagoSinCodigo() throws Exception {
         mvc.perform(post(PEDIDOS + "/" + PEDIDO_ID + "/payment-result")

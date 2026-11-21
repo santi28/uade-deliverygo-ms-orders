@@ -19,9 +19,10 @@ import java.util.Set;
  * ({@code PedidoService.registrarTransicion}), y nunca llama a
  * {@link Pedido#registrarTransicion(EstadoPedido, String)} por su cuenta.
  *
- * <p>Solo contiene las transiciones de los CU CORE. Las de Logistica
- * (CONFIRMADO - EN_PREPARACION - EN_CAMINO - ENTREGADO) se agregan cuando se encare esa
- * evolucion: hoy cualquier intento responde ORDER_INVALID_STATE.
+ * <p>Contiene las transiciones de los CU CORE y la de CU-10 (CONFIRMADO a
+ * EN_PREPARACION). El resto del ciclo de entrega (EN_CAMINO, ENTREGADO) es de Logistica,
+ * que no le avisa a Pedidos: cualquier intento responde ORDER_INVALID_STATE. Con la
+ * entrega en curso el pedido tampoco se cancela desde aca.
  */
 @Component
 public class MaquinaEstados {
@@ -34,9 +35,10 @@ public class MaquinaEstados {
             // CU-02 modificar items (BORRADOR a BORRADOR), CU-03 confirmar, CU-04 cancelar.
             EstadoPedido.BORRADOR,
             EnumSet.of(EstadoPedido.BORRADOR, EstadoPedido.CONFIRMADO, EstadoPedido.CANCELADO),
-            // CU-04 cancelar, solo si el reembolso responde REEMBOLSADO (INT-04).
+            // CU-04 cancelar, solo si el reembolso responde REEMBOLSADO (INT-04); CU-10
+            // Logistica registro la entrega (INT-06).
             EstadoPedido.CONFIRMADO,
-            EnumSet.of(EstadoPedido.CANCELADO));
+            EnumSet.of(EstadoPedido.CANCELADO, EstadoPedido.EN_PREPARACION));
 
     /** Indica si la transicion esta permitida, sin lanzar nada. */
     public boolean esValida(EstadoPedido desde, EstadoPedido hacia) {

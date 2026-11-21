@@ -193,6 +193,14 @@ class PedidoControllerRegressionTest {
         assertThat(confirmado.path("estado").asText()).isEqualTo("CONFIRMADO");
         assertThat(repetido.path("historial")).isEqualTo(confirmado.path("historial"));
         assertThat(consultarPersistido(pedidoId).path("estado").asText()).isEqualTo("CONFIRMADO");
+
+        // CU-10 con el mock de Logistica: el pedido confirmado pasa a EN_PREPARACION.
+        JsonNode enPreparacion = cuerpo(mvc.perform(post(PEDIDOS + "/{id}/delivery", pedidoId)
+                        .header(PedidoController.HEADER_CLIENTE, CLIENTE_ID))
+                .andExpect(status().isOk())
+                .andReturn());
+        assertThat(enPreparacion.path("estado").asText()).isEqualTo("EN_PREPARACION");
+        assertThat(consultarPersistido(pedidoId).path("estado").asText()).isEqualTo("EN_PREPARACION");
     }
 
     private JsonNode avisarResultadoPago(UUID pedidoId, String aviso) throws Exception {

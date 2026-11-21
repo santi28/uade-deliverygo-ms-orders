@@ -47,7 +47,7 @@ class RegistrarTransicionServiceTest extends PedidoServiceTestBase {
     void espiarMaquinaDeEstados() {
         maquina = spy(new MaquinaEstados());
         service = new PedidoService(pedidoRepository, historialEstadoRepository, usuariosClient, catalogoClient,
-                pagosClient, maquina, new PedidoMapper(), transactionManager);
+                pagosClient, logisticaClient, maquina, new PedidoMapper(), transactionManager);
     }
 
     @Test
