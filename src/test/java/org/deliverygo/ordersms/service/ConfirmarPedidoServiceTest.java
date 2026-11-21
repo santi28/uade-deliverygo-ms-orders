@@ -30,6 +30,7 @@ import static org.deliverygo.ordersms.support.PedidosFixture.borradorConItem;
 import static org.deliverygo.ordersms.support.PedidosFixture.enEstado;
 import static org.deliverygo.ordersms.support.PedidosFixture.pago;
 import static org.deliverygo.ordersms.support.PedidosFixture.producto;
+import static org.deliverygo.ordersms.support.PedidosFixture.productoInactivo;
 import static org.deliverygo.ordersms.support.PedidosFixture.productoDeOtroComercio;
 import static org.deliverygo.ordersms.support.PedidosFixture.productoVendible;
 import static org.deliverygo.ordersms.support.PedidosFixture.usuarioInactivo;
@@ -228,6 +229,20 @@ class ConfirmarPedidoServiceTest extends PedidoServiceTestBase {
         // El cliente tiene que ver el total nuevo antes de pagar.
         verifyNoInteractions(pagosClient);
         assertThat(pedido.getEstado()).isEqualTo(EstadoPedido.BORRADOR);
+    }
+
+    @Test
+    @DisplayName("RN-05: un producto disponible pero INACTIVO en Catalogo corta con PRODUCT_UNAVAILABLE")
+    void rechazaProductoInactivo() {
+        Pedido pedido = borradorConItem(2);
+        given(pedidoRepository.findByIdConItems(PEDIDO_ID)).willReturn(Optional.of(pedido));
+        dadoClienteActivo();
+        given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoInactivo(PRODUCTO)));
+
+        Throwable error = catchThrowable(() -> service.confirmarPedido(PEDIDO_ID, CLIENTE, REQUEST));
+
+        assertThat(codigoDe(error)).isEqualTo(CodigoError.PRODUCT_UNAVAILABLE);
+        verifyNoInteractions(pagosClient);
     }
 
     @Test

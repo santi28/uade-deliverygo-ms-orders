@@ -26,6 +26,7 @@ import static org.deliverygo.ordersms.support.PedidosFixture.borrador;
 import static org.deliverygo.ordersms.support.PedidosFixture.borradorConItem;
 import static org.deliverygo.ordersms.support.PedidosFixture.enEstado;
 import static org.deliverygo.ordersms.support.PedidosFixture.producto;
+import static org.deliverygo.ordersms.support.PedidosFixture.productoInactivo;
 import static org.deliverygo.ordersms.support.PedidosFixture.productoDeOtroComercio;
 import static org.deliverygo.ordersms.support.PedidosFixture.productoVendible;
 import static org.mockito.BDDMockito.given;
@@ -107,6 +108,20 @@ class RevalidarPreciosServiceTest extends PedidoServiceTestBase {
 
         assertThat(respuesta.valido()).isFalse();
         assertThat(respuesta.totalVigente()).isEqualByComparingTo("3600.00");
+        assertThat(respuesta.diferencias()).singleElement().satisfies(diferencia -> {
+            assertThat(diferencia.disponible()).isFalse();
+            assertThat(diferencia.motivo()).isEqualTo("PRODUCT_UNAVAILABLE");
+        });
+    }
+
+    @Test
+    @DisplayName("RN-05: un producto INACTIVO en Catalogo se informa como no disponible")
+    void inactivoNoDisponible() {
+        dadoPedido(borradorConItem(1));
+        given(catalogoClient.buscarProducto(PRODUCTO)).willReturn(Optional.of(productoInactivo(PRODUCTO)));
+
+        RevalidacionPreciosResponse respuesta = service.revalidarPrecios(PEDIDO_ID, CLIENTE);
+
         assertThat(respuesta.diferencias()).singleElement().satisfies(diferencia -> {
             assertThat(diferencia.disponible()).isFalse();
             assertThat(diferencia.motivo()).isEqualTo("PRODUCT_UNAVAILABLE");

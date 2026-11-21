@@ -599,7 +599,7 @@ public class PedidoService {
         }
 
         // RN-05: solo productos activos y disponibles.
-        if (!vigente.disponible()) {
+        if (!vigente.vendible()) {
             return new ProblemaDeLinea(CodigoError.PRODUCT_UNAVAILABLE,
                     "El producto " + item.getProductoId() + " no esta disponible");
         }
@@ -708,7 +708,7 @@ public class PedidoService {
         }
 
         // RN-05: solo productos activos y disponibles.
-        if (!producto.disponible()) {
+        if (!producto.vendible()) {
             throw new ReglaNegocioException(CodigoError.PRODUCT_UNAVAILABLE,
                     "El producto " + productoId + " no esta disponible");
         }
