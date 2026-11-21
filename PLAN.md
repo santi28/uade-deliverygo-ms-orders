@@ -32,7 +32,7 @@ Pedidos orquesta el ciclo funcional de la compra. Es dueño de `Pedido`, `ItemPe
 
 La planilla define CU-02 como un único `POST /api/v1/orders/{id}/items` que recibía la cantidad final de cada línea y usaba `cantidad = 0` para quitarla. Por pedido del equipo se partió en un verbo por operación: `POST` da de alta, `PUT` cambia la cantidad de una línea y `DELETE` la saca. El CU, la regla de negocio y el `HistorialEstado` son los mismos; cambian la API (API-02, API-02b, API-02c) y los DTOs.
 
-Qué hay que corregir en la planilla: la ficha de CU-02, API-02, SEC-02 y el diagrama de secuencia, y DTO-03 (que ya no lleva cantidad 0 y ahora exige cantidad mayor a cero). `ModificarItemsPedidoRequest` quedó reemplazado por `AgregarItemsPedidoRequest` (DTO-03) y `ModificarCantidadItemRequest` (DTO-05).
+Qué hay que corregir en la planilla: la ficha de CU-02, API-02, SEC-02 y el diagrama de secuencia, y DTO-03 (que ya no lleva cantidad 0 y ahora exige cantidad mayor a cero). `ModificarItemsPedidoRequest` quedó reemplazado por `AgregarItemsPedidoRequest` (DTO-03) y `ModificarCantidadItemRequest` (DTO-03b; en el código figuraba como DTO-05, que en la planilla es `ErrorResponse`).
 
 Decisiones que trajo el cambio, a confirmar con el docente:
 
@@ -379,7 +379,9 @@ Orden, por importancia: CU-09 (sin él ningún pedido llega a CONFIRMADO con Pag
 - [x] Corrección de RN-05: CU-02, CU-03 y CU-07 usaban solo `disponible()` y no `ProductoDto.vendible()` (desvío #4 del 03/11). Un producto INACTIVO pero disponible se podía pedir
 - [x] CU-10 asignación logística (SRV-10, API-10, INT-06) — con `LogisticaClientMock` declarado (activo en todos los perfiles, como el de Usuarios) hasta resolver el contrato. `SolicitarAsignacionLogisticaServiceTest` (7), API-10 en `PedidoControllerTest` y el flujo completo hasta EN_PREPARACION en `PedidoControllerRegressionTest`
 - [x] Postman y Swagger con los CU nuevos — la colección pasa de 40 a 60 requests (CU-06, CU-07, CU-09, CU-10) y se corrió entera contra la app con el perfil `test`, dos veces sobre la misma base, sin fallas. Se corrigieron dos casos que estaban rotos desde antes: CU-03 esperaba CONFIRMADO (desde el 03/11 el pago queda PENDIENTE y confirma CU-09) y REP-01 esperaba 201 al reutilizar el borrador (responde 200). `doc/openapi.yaml` regenerado, con la portada de Swagger actualizada (CU-01 a CU-10, pago asincrónico, ids `Long` de Catálogo)
-- [ ] Planilla: fichas CU-06 a CU-10 con API/DTO, SEC-06 a SEC-10, matriz de trazabilidad
+- [x] Planilla: fichas CU-06 a CU-10 con API/DTO, SEC-06 a SEC-10, matriz de trazabilidad — copia `TPO_DeliveryGo_Pedidos_Entrega_Final.docx` (v1.0), hecha sobre la planilla devuelta. Además de los evolutivos se pusieron al día las fichas CU-01 a CU-05 (CU-02 en tres endpoints, CU-03 con pago asincrónico, CU-04 con INT-04 y DELETE), SEC-01 a SEC-05 (REP normalizados, sin `ItemPedidoRepository` ni REP-05), DM-07, DM-08, DM-09 nueva y las secciones 9 a 13 (REP-03 corregido, REP-06, SRV/API/INT/DTO). `ModificarCantidadItemRequest` pasa a DTO-03b: DTO-05 es `ErrorResponse`
+- [ ] Planilla: redibujar los diagramas SEC-01 a SEC-05 (las imágenes siguen mostrando REP-04/REP-05, `ItemPedidoRepository` y el pago sincrónico) y dibujar SEC-06, SEC-07, SEC-09 y SEC-10 (hay una marca "pendiente de dibujar" en cada una)
+- [ ] Planilla: fecha de entrega de la portada y sección 1 (sigue hablando de la primera entrega)
 
 **CU-06 — Listar pedidos.** SRV-06/API-06 `GET /api/v1/orders`: listado paginado por cliente. REP-06 `findByClienteId(UUID, Pageable)`; DTO-06 `PaginaPedidosResponse` / `PedidoResumenResponse`. Página base cero, tamaño 1..100, orden `fechaCreacion` DESC e `id` DESC. Sin pedidos: 200 con lista vacía. Parámetros fuera de rango: 400.
 

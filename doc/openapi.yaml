@@ -937,7 +937,7 @@ components:
   schemas:
     ModificarCantidadItemRequest:
       type: object
-      description: Cantidad final de una linea del pedido (DTO-05)
+      description: Cantidad final de una linea del pedido (DTO-03b)
       properties:
         cantidad:
           type: integer

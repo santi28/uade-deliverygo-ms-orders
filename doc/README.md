@@ -5,7 +5,7 @@ Carpeta pedida por la catedra: aca va la documentacion de la primera entrega y e
 | Archivo | Que es |
 | --- | --- |
 | `openapi.yaml` | Contrato Swagger/OpenAPI 3.1 del modulo (API-01 a API-10), exportado de springdoc |
-| `TPO_DeliveryGo_Primera_Entrega.xlsx` | Planilla de la primera entrega (diseño aprobado con correcciones) — **pendiente de subir** |
+| `TPO_DeliveryGo_Pedidos_Entrega_Final.docx` | Planilla de diseño v1.0 para la entrega final: la primera entrega aprobada con correcciones, puesta al día con CU-01 a CU-10. Faltan redibujar los diagramas SEC-01 a SEC-05 y dibujar SEC-06, 07, 09 y 10 |
 
 El diseño vigente y las etapas de desarrollo estan en [`../PLAN.md`](../PLAN.md).
 
