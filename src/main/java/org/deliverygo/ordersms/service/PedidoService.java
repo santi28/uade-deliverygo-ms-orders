@@ -7,12 +7,15 @@ import org.springframework.data.domain.PageRequest;
 import java.util.Objects;
 
 import org.deliverygo.ordersms.client.CatalogoClient;
+import org.deliverygo.ordersms.client.LogisticaClient;
 import org.deliverygo.ordersms.client.PagosClient;
 import org.deliverygo.ordersms.client.UsuariosClient;
+import org.deliverygo.ordersms.client.dto.EntregaDto;
 import org.deliverygo.ordersms.client.dto.EstadoPago;
 import org.deliverygo.ordersms.client.dto.PagoDto;
 import org.deliverygo.ordersms.client.dto.ProductoDto;
 import org.deliverygo.ordersms.client.dto.ReembolsoDto;
+import org.deliverygo.ordersms.client.dto.SolicitudEntregaDto;
 import org.deliverygo.ordersms.client.dto.SolicitudPagoDto;
 import org.deliverygo.ordersms.client.dto.UsuarioDto;
 import org.deliverygo.ordersms.dto.AgregarItemsPedidoRequest;
@@ -20,6 +23,8 @@ import org.deliverygo.ordersms.dto.ConfirmarPedidoRequest;
 import org.deliverygo.ordersms.dto.CrearPedidoRequest;
 import org.deliverygo.ordersms.dto.ModificarCantidadItemRequest;
 import org.deliverygo.ordersms.dto.PedidoResponse;
+import org.deliverygo.ordersms.dto.ResultadoPagoRequest;
+import org.deliverygo.ordersms.dto.RevalidacionPreciosResponse;
 import org.deliverygo.ordersms.exception.CodigoError;
 import org.deliverygo.ordersms.exception.PedidoNotFoundException;
 import org.deliverygo.ordersms.exception.ReglaNegocioException;
@@ -37,6 +42,8 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -47,7 +54,8 @@ import java.util.UUID;
  * Servicio de Pedidos: concentra las reglas de negocio de los CU CORE.
  *
  * <p>Cubre los cinco CU CORE: SRV-01 (CU-01), SRV-02 (CU-02), SRV-03 (CU-03), SRV-04
- * (CU-04) y SRV-05 (CU-05).
+ * (CU-04) y SRV-05 (CU-05), y los evolutivos SRV-06 (CU-06), SRV-07 (CU-07), SRV-08 (CU-08), SRV-09
+ * (CU-09) y SRV-10 (CU-10).
  */
 @Service
 public class PedidoService {
@@ -83,6 +91,7 @@ public class PedidoService {
     private final UsuariosClient usuariosClient;
     private final CatalogoClient catalogoClient;
     private final PagosClient pagosClient;
+    private final LogisticaClient logisticaClient;
     private final MaquinaEstados maquinaEstados;
     private final PedidoMapper pedidoMapper;
 
@@ -94,6 +103,7 @@ public class PedidoService {
 
     public PedidoService(PedidoRepository pedidoRepository, HistorialEstadoRepository historialEstadoRepository,
             UsuariosClient usuariosClient, CatalogoClient catalogoClient, PagosClient pagosClient,
+            LogisticaClient logisticaClient,
             MaquinaEstados maquinaEstados, PedidoMapper pedidoMapper,
             PlatformTransactionManager transactionManager) {
         this.pedidoRepository = pedidoRepository;
@@ -101,6 +111,7 @@ public class PedidoService {
         this.usuariosClient = usuariosClient;
         this.catalogoClient = catalogoClient;
         this.pagosClient = pagosClient;
+        this.logisticaClient = logisticaClient;
         this.maquinaEstados = maquinaEstados;
         this.pedidoMapper = pedidoMapper;
         this.transaccionIndependiente = new TransactionTemplate(transactionManager);
@@ -137,8 +148,9 @@ public class PedidoService {
         }
 
         Pedido pedido = Pedido.crear(clienteId, request.comercioId(), request.direccionEntregaId());
-        // Deja asentado el nacimiento del pedido en el historial que lee CU-05 (REL-02).
-        pedido.registrarTransicion(EstadoPedido.BORRADOR, MOTIVO_CREACION);
+        // SRV-08: deja asentado el nacimiento del pedido en el historial que lee CU-05
+        // (REL-02). Nace en BORRADOR, asi que la entrada es BORRADOR a BORRADOR.
+        registrarTransicion(pedido, EstadoPedido.BORRADOR, MOTIVO_CREACION);
 
         Pedido guardado = pedidoRepository.save(pedido);
         return new ResultadoCreacionPedido(pedidoMapper.aResponse(guardado, guardado.getHistorial()), true);
@@ -295,7 +307,7 @@ public class PedidoService {
             // BORRADOR con el pago asociado y la transicion a CONFIRMADO pasa a depender de
             // que Pagos nos avise (CU-09). El intento queda en el historial.
             pedido.asociarPago(pago.codigoPago());
-            transicionar(pedido, EstadoPedido.BORRADOR,
+            registrarTransicion(pedido, EstadoPedido.BORRADOR,
                     "CU-03: pago " + pago.codigoPago() + " iniciado, PENDIENTE de autorizacion");
             return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
         }
@@ -308,7 +320,7 @@ public class PedidoService {
         }
 
         pedido.asociarPago(pago.codigoPago());
-        transicionar(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.codigoPago());
+        registrarTransicion(pedido, EstadoPedido.CONFIRMADO, "CU-03: pago APROBADO " + pago.codigoPago());
 
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
     }
@@ -360,7 +372,7 @@ public class PedidoService {
             motivo = "CU-04: cancelado con reembolso del pago " + pedido.getPagoId();
         }
 
-        transicionar(pedido, EstadoPedido.CANCELADO, motivo);
+        registrarTransicion(pedido, EstadoPedido.CANCELADO, motivo);
 
         return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
     }
@@ -397,6 +409,170 @@ public class PedidoService {
         return new PaginaPedidosResponse(resumenes, pagina, tamanio,
                 resultado.getTotalElements(), resultado.getTotalPages());
     }
+
+    /**
+     * SRV-07 — CU-07: compara las lineas del borrador con Catalogo antes de confirmar.
+     *
+     * <p>Solo informa: no escribe nada, ni siquiera el historial. Un precio distinto o un
+     * producto que ya no se vende no son error aca, son el resultado. Es la misma regla
+     * con la que CU-03 corta, asi que un pedido {@code valido} pasa la revalidacion de la
+     * confirmacion (mientras Catalogo no cambie en el medio).
+     *
+     * <p>El total vigente suma, al precio de hoy, solo las lineas que se pueden seguir
+     * vendiendo: es lo que costaria el pedido si el cliente saca las que no. Para aceptar
+     * un precio nuevo el cliente quita la linea y la vuelve a agregar con CU-02.
+     *
+     * <p>Mismas precondiciones que editar (REP-02, RN-04): un pedido confirmado ya se
+     * cobro y no tiene nada que revalidar. Si Catalogo no responde, 503: nunca se informa
+     * un precio supuesto (INT-01).
+     */
+    @Transactional(readOnly = true)
+    public RevalidacionPreciosResponse revalidarPrecios(UUID pedidoId, UUID clienteId) {
+        Pedido pedido = buscarBorradorEditable(pedidoId, clienteId);
+
+        if (pedido.getItems().isEmpty()) {
+            throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
+                    "El pedido " + pedidoId + " no tiene items para revalidar");
+        }
+
+        List<RevalidacionPreciosResponse.DiferenciaLinea> diferencias = new ArrayList<>();
+        BigDecimal totalVigente = BigDecimal.ZERO;
+        for (ItemPedido item : pedido.getItems()) {
+            Optional<ProductoDto> producto = catalogoClient.buscarProducto(item.getProductoId());
+            ProblemaDeLinea problema = revalidarLinea(pedido, item, producto);
+            boolean disponible = problema == null || problema.codigo() == CodigoError.PRICE_CHANGED;
+            BigDecimal precioVigente = producto.map(ProductoDto::precio).orElse(null);
+
+            if (disponible) {
+                totalVigente = totalVigente.add(precioVigente.multiply(BigDecimal.valueOf(item.getCantidad())));
+            }
+            if (problema != null) {
+                diferencias.add(new RevalidacionPreciosResponse.DiferenciaLinea(item.getProductoId(),
+                        item.getPrecioUnitario(), precioVigente, disponible, problema.codigo().name()));
+            }
+        }
+
+        return new RevalidacionPreciosResponse(pedidoId, diferencias.isEmpty(), pedido.getTotal(),
+                totalVigente, pedido.getMoneda(), diferencias);
+    }
+
+    /**
+     * SRV-09 — CU-09: aplica al pedido el resultado del pago que Pagos resolvio aparte.
+     *
+     * <p>El aviso no se cree: solo dice de que pago se trata. El resultado se lee de Pagos
+     * con INT-05, asi que llamar a este CU sin motivo solo sincroniza el pedido con lo que
+     * Pagos ya sabe. Por eso no pide identidad del cliente: el actor es Pagos.
+     *
+     * <p>Antes de aplicar nada verifica la correlacion: que el pago sea el asociado al
+     * pedido (400) y que Pagos lo informe para este pedido, por su total y en su moneda
+     * (422 PAYMENT_MISMATCH). El total puede no coincidir si el cliente edito el borrador
+     * despues de iniciar el pago con CU-03: ese pago no confirma el pedido nuevo.
+     *
+     * <ul>
+     *   <li>APROBADO: un BORRADOR pasa a CONFIRMADO. Un CANCELADO no se reabre (RN-04).
+     *   <li>RECHAZADO: un BORRADOR sigue en BORRADOR y el rechazo queda en el historial.
+     *   <li>PENDIENTE o REEMBOLSADO: no hay nada que aplicar.
+     * </ul>
+     *
+     * <p>Un resultado ya aplicado responde el pedido sin cambios ni una entrada nueva en
+     * el historial. Si Pagos no responde, 503 y el pedido queda como estaba.
+     */
+    @Transactional
+    public PedidoResponse procesarResultadoPago(UUID pedidoId, ResultadoPagoRequest request) {
+        Pedido pedido = pedidoRepository.findById(pedidoId)
+                .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
+
+        if (pedido.getPagoId() == null) {
+            throw new ReglaNegocioException(CodigoError.ORDER_INVALID_STATE,
+                    "El pedido " + pedidoId + " no tiene un pago iniciado");
+        }
+
+        if (!pedido.getPagoId().equals(request.codigoPago())) {
+            throw new ReglaNegocioException(CodigoError.VALIDATION_ERROR,
+                    "El pago " + request.codigoPago() + " no es el asociado al pedido " + pedidoId);
+        }
+
+        // Duplicado: solo un APROBADO confirma, asi que no hace falta preguntarle a Pagos.
+        if (pedido.getEstado() == EstadoPedido.CONFIRMADO) {
+            return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+        }
+
+        // INT-05: si Pagos no responde, la excepcion sale sin tocar el pedido.
+        PagoDto pago = pagosClient.consultarPago(pedido.getPagoId())
+                .orElseThrow(() -> new ReglaNegocioException(CodigoError.PAYMENT_MISMATCH,
+                        "Pagos no conoce el pago " + request.codigoPago()));
+        verificarCorrelacion(pedido, pago);
+
+        if (pago.estado() == EstadoPago.APROBADO) {
+            // RN-04: un CANCELADO no se reabre. Con el interruptor del desvio (17/11)
+            // prendido, si.
+            validarEstado(pedido.getEstado(), EstadoPedido.CONFIRMADO);
+            registrarTransicion(pedido, EstadoPedido.CONFIRMADO, "CU-09: pago APROBADO " + pago.codigoPago());
+        } else if (pago.estado() == EstadoPago.RECHAZADO && pedido.getEstado() == EstadoPedido.BORRADOR) {
+            String motivo = "CU-09: pago RECHAZADO " + pago.codigoPago();
+            boolean yaRegistrado = leerHistorial(pedidoId).stream()
+                    .anyMatch(entrada -> motivo.equals(entrada.getMotivo()));
+            if (!yaRegistrado) {
+                registrarTransicion(pedido, EstadoPedido.BORRADOR, motivo);
+            }
+        }
+
+        return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+    }
+
+    /**
+     * SRV-10 — CU-10: pide a Logistica la entrega de un pedido confirmado.
+     *
+     * <p>Pedidos no asigna repartidores: hace la solicitud por INT-06 y registra lo que
+     * responde. Tanto ASIGNADA como PENDIENTE_ASIGNACION pasan el pedido a EN_PREPARACION,
+     * porque en los dos casos la entrega ya existe en Logistica. El id y el estado de la
+     * entrega quedan en el motivo del historial; el pedido no los guarda (DM-09).
+     *
+     * <p>Solo un CONFIRMADO (RN-04): un borrador o un cancelado responden
+     * ORDER_INVALID_STATE sin llamar a Logistica. Un pedido ya EN_PREPARACION responde sin
+     * repetir la solicitud. Si Logistica no responde, 503 y el pedido sigue CONFIRMADO:
+     * nunca se desconfirma por falta de repartidores.
+     */
+    @Transactional
+    public PedidoResponse solicitarAsignacionLogistica(UUID pedidoId, UUID clienteId) {
+        // REP-03: pedido verificando el titular.
+        Pedido pedido = pedidoRepository.findByIdAndClienteId(pedidoId, clienteId)
+                .orElseThrow(() -> new PedidoNotFoundException(pedidoId));
+
+        // Solicitud repetida: la entrega ya se pidio.
+        if (pedido.getEstado() == EstadoPedido.EN_PREPARACION) {
+            return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+        }
+
+        validarEstado(pedido.getEstado(), EstadoPedido.EN_PREPARACION);
+
+        // INT-06: si Logistica no responde, la excepcion sale sin tocar el pedido.
+        EntregaDto entrega = logisticaClient.solicitarAsignacion(new SolicitudEntregaDto(
+                pedido.getId(), pedido.getClienteId(), pedido.getComercioId(), pedido.getDireccionEntregaId()));
+
+        registrarTransicion(pedido, EstadoPedido.EN_PREPARACION,
+                "CU-10: entrega " + entrega.id() + " " + entrega.estado() + " en Logistica");
+
+        return pedidoMapper.aResponse(pedido, leerHistorial(pedidoId));
+    }
+
+    /**
+     * INT-05 — CU-09: el pago que informa Pagos tiene que ser de este pedido, por su
+     * total y en su moneda.
+     */
+    private void verificarCorrelacion(Pedido pedido, PagoDto pago) {
+        boolean concuerda = pedido.getId().equals(pago.codigoPedido())
+                && pago.monto() != null && pedido.getTotal().compareTo(pago.monto()) == 0
+                && pedido.getMoneda().equals(pago.moneda());
+        if (!concuerda) {
+            throw new ReglaNegocioException(CodigoError.PAYMENT_MISMATCH,
+                    "El pago " + pago.codigoPago() + " no corresponde al pedido " + pedido.getId()
+                            + ": Pagos informa pedido " + pago.codigoPedido() + " por " + pago.monto()
+                            + " " + pago.moneda() + " y el pedido es por " + pedido.getTotal()
+                            + " " + pedido.getMoneda());
+        }
+    }
+
     /**
      * INT-02 — RN-01 y RN-06: el cliente existe y esta activo, y la direccion es una de
      * las suyas.
@@ -423,7 +599,8 @@ public class PedidoService {
     }
 
     /**
-     * INT-01 — CU-03: revalida cada linea contra Catalogo antes de cobrar.
+     * INT-01 — CU-03: revalida cada linea contra Catalogo antes de cobrar, con la misma
+     * regla que SRV-07, y corta en la primera que no pasa.
      *
      * <p>El precio congelado tiene que seguir siendo el vigente (RN-03): si cambio, el
      * cliente tiene que ver el total nuevo antes de pagar, asi que se corta con
@@ -431,29 +608,52 @@ public class PedidoService {
      */
     private void revalidarLineasContraCatalogo(Pedido pedido) {
         for (ItemPedido item : pedido.getItems()) {
-            ProductoDto producto = catalogoClient.buscarProducto(item.getProductoId())
-                    .orElseThrow(() -> new ReglaNegocioException(CodigoError.PRODUCT_UNAVAILABLE,
-                            "El producto " + item.getProductoId() + " ya no esta en Catalogo"));
-
-            // RN-02: el producto pudo pasar a otro comercio desde que se agrego.
-            if (!producto.comercioId().equals(pedido.getComercioId())) {
-                throw new ReglaNegocioException(CodigoError.MIXED_MERCHANT,
-                        "El producto " + item.getProductoId() + " ya no es del comercio del pedido");
-            }
-
-            // RN-05: solo productos activos y disponibles.
-            if (!producto.disponible()) {
-                throw new ReglaNegocioException(CodigoError.PRODUCT_UNAVAILABLE,
-                        "El producto " + item.getProductoId() + " no esta disponible");
-            }
-
-            // RN-03: el total se cobra con precios confirmados.
-            if (producto.precio().compareTo(item.getPrecioUnitario()) != 0) {
-                throw new ReglaNegocioException(CodigoError.PRICE_CHANGED,
-                        "El precio del producto " + item.getProductoId() + " cambio de "
-                                + item.getPrecioUnitario() + " a " + producto.precio());
+            ProblemaDeLinea problema = revalidarLinea(pedido, item,
+                    catalogoClient.buscarProducto(item.getProductoId()));
+            if (problema != null) {
+                throw new ReglaNegocioException(problema.codigo(), problema.mensaje());
             }
         }
+    }
+
+    /** SRV-07 — Por que una linea ya no se puede cobrar como esta guardada. */
+    private record ProblemaDeLinea(CodigoError codigo, String mensaje) {
+    }
+
+    /**
+     * SRV-07 — CU-07: compara una linea con lo que informa Catalogo. Es la regla que
+     * comparten CU-03, que corta con el problema, y API-07, que lo informa.
+     *
+     * @param producto lo que respondio INT-01; vacio si el producto ya no esta
+     * @return el problema de la linea, o {@code null} si sigue disponible y al mismo
+     *         precio
+     */
+    private ProblemaDeLinea revalidarLinea(Pedido pedido, ItemPedido item, Optional<ProductoDto> producto) {
+        if (producto.isEmpty()) {
+            return new ProblemaDeLinea(CodigoError.PRODUCT_UNAVAILABLE,
+                    "El producto " + item.getProductoId() + " ya no esta en Catalogo");
+        }
+        ProductoDto vigente = producto.get();
+
+        // RN-02: el producto pudo pasar a otro comercio desde que se agrego.
+        if (!vigente.comercioId().equals(pedido.getComercioId())) {
+            return new ProblemaDeLinea(CodigoError.MIXED_MERCHANT,
+                    "El producto " + item.getProductoId() + " ya no es del comercio del pedido");
+        }
+
+        // RN-05: solo productos activos y disponibles.
+        if (!vigente.vendible()) {
+            return new ProblemaDeLinea(CodigoError.PRODUCT_UNAVAILABLE,
+                    "El producto " + item.getProductoId() + " no esta disponible");
+        }
+
+        // RN-03: el total se cobra con precios confirmados.
+        if (vigente.precio().compareTo(item.getPrecioUnitario()) != 0) {
+            return new ProblemaDeLinea(CodigoError.PRICE_CHANGED,
+                    "El precio del producto " + item.getProductoId() + " cambio de "
+                            + item.getPrecioUnitario() + " a " + vigente.precio());
+        }
+        return null;
     }
 
     /**
@@ -478,16 +678,27 @@ public class PedidoService {
     }
 
     /**
-     * Aplica una transicion respetando el interruptor del desvio (17/11).
+     * SRV-08 — CU-08: registra una transicion de estado y su entrada en el historial.
      *
-     * <p>Con el interruptor apagado es exactamente
+     * <p>Es el unico punto por el que un CU cambia el estado del pedido: CU-01 asienta el
+     * nacimiento, CU-02 las ediciones, CU-03 y CU-09 la confirmacion y los intentos de
+     * pago, CU-04 la cancelacion. Valida la transicion contra la maquina de estados
+     * (RN-04) y la aplica sobre el agregado; si no esta permitida corta con
+     * ORDER_INVALID_STATE antes de tocar nada.
+     *
+     * <p>No persiste por su cuenta: el estado y la entrada viajan con el pedido por
+     * cascade (DM-06) en la transaccion del CU que la llama, asi que se guardan o se
+     * deshacen juntos. El aviso a Analitica de la ficha (paso 5) queda fuera: el ecosistema
+     * no publica un endpoint para recibir eventos (desvio registrado en PLAN.md, Etapa 6).
+     *
+     * <p>Respeta el interruptor del desvio (17/11). Con el interruptor apagado es exactamente
      * {@link MaquinaEstados#transicionar(Pedido, EstadoPedido, String)}. Prendido saltea
      * RN-04 tambien aca, y no solo en {@link #validarEstado}: si no, confirmar un
      * CANCELADO pasaria la validacion previa y despues reventaria al aplicar la
      * transicion, y el interruptor no serviria de nada. El motivo que queda en el
      * historial dice que se salteo la regla.
      */
-    private HistorialEstado transicionar(Pedido pedido, EstadoPedido nuevoEstado, String motivo) {
+    private HistorialEstado registrarTransicion(Pedido pedido, EstadoPedido nuevoEstado, String motivo) {
         if (saltearValidacionEstado && !maquinaEstados.esValida(pedido.getEstado(), nuevoEstado)) {
             return maquinaEstados.transicionarSinValidar(pedido, nuevoEstado,
                     motivo + " (RN-04 salteada: " + pedido.getEstado() + " a " + nuevoEstado + ")");
@@ -498,7 +709,7 @@ public class PedidoService {
     private void registrarPagoRechazado(UUID pedidoId, UUID paymentId) {
         transaccionIndependiente.executeWithoutResult(status ->
                 pedidoRepository.findById(pedidoId).ifPresent(pedido -> {
-                    transicionar(pedido, EstadoPedido.BORRADOR,
+                    registrarTransicion(pedido, EstadoPedido.BORRADOR,
                             "CU-03: pago RECHAZADO " + paymentId);
                     pedidoRepository.save(pedido);
                 }));
@@ -530,7 +741,7 @@ public class PedidoService {
      * es lo que despues lee CU-05.
      */
     private void registrarEdicion(Pedido pedido, String motivo) {
-        transicionar(pedido, EstadoPedido.BORRADOR, motivo);
+        registrarTransicion(pedido, EstadoPedido.BORRADOR, motivo);
     }
 
     /**
@@ -551,7 +762,7 @@ public class PedidoService {
         }
 
         // RN-05: solo productos activos y disponibles.
-        if (!producto.disponible()) {
+        if (!producto.vendible()) {
             throw new ReglaNegocioException(CodigoError.PRODUCT_UNAVAILABLE,
                     "El producto " + productoId + " no esta disponible");
         }

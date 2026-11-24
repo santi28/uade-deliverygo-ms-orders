@@ -38,9 +38,11 @@ class MaquinaEstadosTest {
             // CU-04 cancelar sin reembolso.
             "BORRADOR, CANCELADO",
             // CU-04 cancelar con reembolso REEMBOLSADO.
-            "CONFIRMADO, CANCELADO"
+            "CONFIRMADO, CANCELADO",
+            // CU-10 Logistica registro la entrega.
+            "CONFIRMADO, EN_PREPARACION"
     })
-    @DisplayName("acepta las transiciones de los CU CORE")
+    @DisplayName("acepta las transiciones de los CU CORE y de CU-10")
     void aceptaTransicionesDeLosCuCore(EstadoPedido desde, EstadoPedido hacia) {
         assertThat(maquinaEstados.esValida(desde, hacia)).isTrue();
     }
@@ -55,10 +57,15 @@ class MaquinaEstadosTest {
             "CANCELADO, BORRADOR",
             "CANCELADO, CONFIRMADO",
             "CANCELADO, CANCELADO",
-            // Logistica queda fuera de los CU CORE hasta que se encare esa evolucion.
-            "CONFIRMADO, EN_PREPARACION",
+            // CU-10 solo sale de un pedido confirmado.
+            "BORRADOR, EN_PREPARACION",
+            // El resto del ciclo de entrega es de Logistica y no nos avisa.
             "CONFIRMADO, EN_CAMINO",
             "CONFIRMADO, ENTREGADO",
+            "EN_PREPARACION, EN_CAMINO",
+            "EN_PREPARACION, EN_PREPARACION",
+            // Con la entrega en curso el pedido ya no se cancela desde Pedidos.
+            "EN_PREPARACION, CANCELADO",
             "BORRADOR, ENTREGADO"
     })
     @DisplayName("rechaza las transiciones fuera de la tabla")

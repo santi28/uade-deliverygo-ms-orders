@@ -1,6 +1,7 @@
 package org.deliverygo.ordersms.service;
 
 import org.deliverygo.ordersms.client.CatalogoClient;
+import org.deliverygo.ordersms.client.LogisticaClient;
 import org.deliverygo.ordersms.client.PagosClient;
 import org.deliverygo.ordersms.client.UsuariosClient;
 import org.deliverygo.ordersms.exception.CodigoError;
@@ -54,6 +55,9 @@ abstract class PedidoServiceTestBase {
     protected PagosClient pagosClient;
 
     @Mock
+    protected LogisticaClient logisticaClient;
+
+    @Mock
     protected PlatformTransactionManager transactionManager;
 
     protected final MaquinaEstados maquinaEstados = new MaquinaEstados();
@@ -63,7 +67,7 @@ abstract class PedidoServiceTestBase {
     @BeforeEach
     void prepararServicio() {
         service = new PedidoService(pedidoRepository, historialEstadoRepository, usuariosClient, catalogoClient,
-                pagosClient, maquinaEstados, new PedidoMapper(), transactionManager);
+                pagosClient, logisticaClient, maquinaEstados, new PedidoMapper(), transactionManager);
     }
 
     /**

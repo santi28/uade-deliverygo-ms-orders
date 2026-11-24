@@ -147,6 +147,40 @@ class PagosClientHttpTest {
     }
 
     @Test
+    @DisplayName("INT-05: GET del pago devuelve el estado que resolvio Pagos")
+    void consultaElPago() {
+        pagos.expect(requestTo(URL_PAGO + "/" + PAGO))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess(cuerpoDelPago("APROBADO"), MediaType.APPLICATION_JSON));
+
+        assertThat(cliente.consultarPago(PAGO))
+                .hasValueSatisfying(pago -> {
+                    assertThat(pago.estado()).isEqualTo(EstadoPago.APROBADO);
+                    assertThat(pago.codigoPedido()).isEqualTo(PEDIDO);
+                    assertThat(pago.monto()).isEqualByComparingTo(TOTAL);
+                });
+        pagos.verify();
+    }
+
+    @Test
+    @DisplayName("INT-05: un pago que Pagos no conoce (404) vuelve vacio, no es una caida")
+    void consultaUnPagoInexistente() {
+        pagos.expect(requestTo(URL_PAGO + "/" + PAGO)).andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        assertThat(cliente.consultarPago(PAGO)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("INT-05: si Pagos falla al consultar, corta en 503")
+    void traduceElErrorDeLaConsultaA503() {
+        pagos.expect(requestTo(URL_PAGO + "/" + PAGO)).andRespond(withServerError());
+
+        assertThat(catchThrowable(() -> cliente.consultarPago(PAGO)))
+                .isInstanceOf(DependenciaNoDisponibleException.class)
+                .hasMessageContaining(PagosClientHttp.MODULO);
+    }
+
+    @Test
     @DisplayName("INT-03: si Pagos no responde, el pedido queda en BORRADOR")
     void traduceElTimeoutA503() {
         pagos.expect(requestTo(URL_PAGO))

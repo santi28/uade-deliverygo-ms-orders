@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Positive;
 
 /**
- * DTO-05 — Cuerpo de API-02b {@code PUT /api/v1/orders/{id}/items/{productoId}} (CU-02).
+ * DTO-03b — Cuerpo de API-02b {@code PUT /api/v1/orders/{id}/items/{productoId}} (CU-02).
  *
  * <p>La cantidad enviada reemplaza la que tenia la linea, no se suma. Tiene que ser
  * mayor a cero: para quitar la linea esta API-02c ({@code DELETE}).
@@ -15,7 +15,7 @@ import jakarta.validation.constraints.Positive;
  *
  * @param cantidad cantidad final de la linea; mayor a cero
  */
-@Schema(description = "Cantidad final de una linea del pedido (DTO-05)")
+@Schema(description = "Cantidad final de una linea del pedido (DTO-03b)")
 public record ModificarCantidadItemRequest(
 
         @Schema(description = "Cantidad final de la linea; reemplaza la anterior, no se suma",
